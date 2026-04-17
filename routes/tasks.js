@@ -1,6 +1,7 @@
 const express = require('express');
 const { queries } = require('../database/db');
 const { authMiddleware } = require('../middleware/auth');
+const { sendAssignmentEmail } = require('../services/emailService');
 
 const router = express.Router();
 
@@ -110,6 +111,13 @@ router.post('/', authMiddleware, (req, res) => {
     );
 
     const task = queries.getTaskById(result.lastInsertRowid);
+    
+    // Trigger instant email notification
+    if (assignedEmail) {
+      sendAssignmentEmail(assignedEmail, task.assigned_to_name || assignedEmail.split('@')[0], task)
+        .catch(err => console.error('Assignment email failed:', err.message));
+    }
+
     res.status(201).json(task);
   } catch (err) {
     console.error('Create task error:', err);
@@ -179,6 +187,13 @@ router.put('/:id', authMiddleware, (req, res) => {
     }
 
     const task = queries.getTaskById(taskId);
+    
+    // Trigger instant email notification if assignee changed
+    if (assignedEmail && assignedEmail !== existing.assigned_to_email) {
+      sendAssignmentEmail(assignedEmail, task.assigned_to_name || assignedEmail.split('@')[0], task)
+        .catch(err => console.error('Assignment email failed:', err.message));
+    }
+
     res.json(task);
   } catch (err) {
     console.error('Update task error:', err);

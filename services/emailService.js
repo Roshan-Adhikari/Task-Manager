@@ -148,4 +148,55 @@ async function sendNotificationEmail(email, subject, message) {
   });
 }
 
-module.exports = { sendReminderEmail, sendInviteEmail, sendNotificationEmail };
+// ── SEND TASK ASSIGNMENT EMAIL ─────────────────────────────────────
+async function sendAssignmentEmail(email, userName, task) {
+  const t = getTransporter();
+  const dueDate = task.due_date ? new Date(task.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'No due date';
+  const priorityColors = { high: '#f03e3e', medium: '#f59f00', low: '#3ecf8e' };
+  const priorityColor = priorityColors[task.priority] || '#9aa0ab';
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="UTF-8"></head>
+    <body style="margin:0; padding:0; background:#0d0f12; font-family:'Segoe UI',Arial,sans-serif;">
+      <div style="max-width:600px; margin:0 auto; padding:32px 20px;">
+        <div style="background:linear-gradient(135deg, #1e2128 0%, #23272e 100%); border:1px solid rgba(255,255,255,0.07); border-radius:16px; padding:32px; text-align:center;">
+          <div style="width:48px; height:48px; background:rgba(124,106,247,0.12); border:1px solid rgba(124,106,247,0.35); border-radius:12px; display:inline-flex; align-items:center; justify-content:center; font-size:22px; margin-bottom:16px;">🎯</div>
+          <h1 style="color:#e8eaed; font-size:20px; font-weight:600; margin:0 0 8px;">New Task Assigned</h1>
+          <p style="color:#9aa0ab; font-size:14px; margin:0 0 24px;">Hi <strong>${userName || 'Team Member'}</strong>, a new task has been assigned to you.</p>
+          
+          <div style="background:#141619; border:1px solid rgba(255,255,255,0.07); border-radius:12px; padding:24px; text-align:left; margin-bottom:24px;">
+            <div style="color:#e8eaed; font-size:18px; font-weight:600; margin-bottom:8px;">${task.title}</div>
+            <div style="color:#9aa0ab; font-size:14px; margin-bottom:16px; line-height:1.5;">${task.description || 'No description provided.'}</div>
+            
+            <div style="display:flex; gap:16px; flex-wrap:wrap;">
+              <div style="margin-right:20px;">
+                <div style="color:#5c6370; font-size:11px; text-transform:uppercase; margin-bottom:4px;">Priority</div>
+                <span style="background:${priorityColor}22; color:${priorityColor}; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:500;">${task.priority}</span>
+              </div>
+              <div>
+                <div style="color:#5c6370; font-size:11px; text-transform:uppercase; margin-bottom:4px;">Due Date</div>
+                <div style="color:#f03e3e; font-size:13px; font-weight:500;">📅 ${dueDate}</div>
+              </div>
+            </div>
+          </div>
+
+          <a href="https://task-manager-9mif.onrender.com" style="display:inline-block; background:#7c6af7; color:#fff; padding:12px 32px; border-radius:8px; text-decoration:none; font-size:14px; font-weight:500;">View in TaskFlow</a>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  await t.sendMail({
+    from: `"${process.env.EMAIL_SENDER_NAME || 'Task Manager Reminder'}" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: `🎯 New Task: ${task.title}`,
+    html,
+  });
+
+  console.log(`📧 Assignment notification sent to ${email} for task: ${task.title}`);
+}
+
+module.exports = { sendReminderEmail, sendInviteEmail, sendNotificationEmail, sendAssignmentEmail };
