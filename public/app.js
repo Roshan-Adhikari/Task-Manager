@@ -3,7 +3,7 @@
 //  Connected to Node.js/Express backend with SQLite
 // ═══════════════════════════════════════════════════════════
 
-const GOOGLE_CLIENT_ID = '410817380647-jnnakifc7tojd6v6crvq1p7coge8qbgl.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = '499606167028-05437cd7m6lcued0p20qvjjn5hlgq3ds.apps.googleusercontent.com';
 const API_BASE = '';  // Same origin
 
 // ── STATE ──────────────────────────────────────────────────
