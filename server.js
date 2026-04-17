@@ -22,6 +22,8 @@ async function boot() {
   app.use('/api/tasks', require('./routes/tasks'));
   app.use('/api/teams', require('./routes/teams'));
   app.use('/api/teams', require('./routes/members'));
+  app.use('/api/users', require('./routes/users'));
+  app.use('/api/tags', require('./routes/tags'));
 
   // ── HEALTH CHECK ───────────────────────────────────────────────
   app.get('/api/health', (req, res) => {

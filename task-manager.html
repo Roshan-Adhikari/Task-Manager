@@ -796,6 +796,17 @@
       <div class="nav-item" onclick="openGroupModal()">
         <span class="nav-icon">＋</span> New Team
       </div>
+
+      <div class="nav-label" style="margin-top:8px;">Management</div>
+      <div class="nav-item" data-filter="users" onclick="TF.setFilter('users', this)">
+        <span class="nav-icon">👥</span> Users
+      </div>
+      <div class="nav-item" data-filter="tags" onclick="TF.setFilter('tags', this)">
+        <span class="nav-icon">🏷️</span> Tag Manager
+      </div>
+      <div class="nav-item" data-filter="activity" onclick="setFilter('activity',this)">
+        <span class="nav-icon">📊</span> Activity Log
+      </div>
     </div>
 
     <div class="sidebar-footer">
@@ -899,6 +910,31 @@
 
       <!-- List -->
       <div class="task-list" id="list-view"></div>
+
+      <!-- Activity View -->
+      <div id="activity-view"></div>
+
+      <!-- Users View -->
+      <div id="users-view" style="display:none;">
+        <div class="view-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+          <h2>User Management</h2>
+          <button class="add-task-btn" onclick="TF.openUserModal()">＋ Add User</button>
+        </div>
+        <div id="users-list-container"></div>
+      </div>
+
+      <!-- Tags View -->
+      <div id="tags-view" style="display:none;">
+        <div class="view-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+          <h2>Tag Manager</h2>
+          <div style="display:flex; gap:10px;">
+            <input type="text" id="new-tag-name" class="form-input" placeholder="Tag Name" style="width:150px;">
+            <input type="color" id="new-tag-color" value="#7c6af7" style="height:38px; width:40px; border:none; background:none;">
+            <button class="add-task-btn" onclick="TF.saveTag()">Create Tag</button>
+          </div>
+        </div>
+        <div id="tags-list-container" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap:12px;"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -937,21 +973,26 @@
         </select>
       </div>
     </div>
-    <div class="form-grid">
-      <div class="form-row">
-        <label class="form-label">Assigned To</label>
-        <input type="text" class="form-input" id="f-assignee" placeholder="Name or email">
-      </div>
-      <div class="form-row">
-        <label class="form-label">Due Date</label>
-        <input type="date" class="form-input" id="f-due">
+    <div class="form-row">
+      <label class="form-label">Assign To</label>
+      <div style="display:flex; gap:10px;">
+        <select id="f-assign-type" class="form-input" style="width:120px;" onchange="TF.toggleAssignSection()">
+          <option value="user">User</option>
+          <option value="team">Team</option>
+        </select>
+        <div id="assign-user-section" style="flex:1;">
+          <input type="text" id="f-assignee" class="form-input" placeholder="Find user by email..." list="assignee-list">
+        </div>
+        <div id="assign-team-section" style="flex:1; display:none;">
+          <select id="f-group" class="form-input">
+            <option value="">Choose Team...</option>
+          </select>
+        </div>
       </div>
     </div>
     <div class="form-row">
-      <label class="form-label">Team</label>
-      <select class="form-input" id="f-group">
-        <option value="">No Team</option>
-      </select>
+      <label class="form-label">Due Date</label>
+      <input type="date" class="form-input" id="f-due">
     </div>
     <div class="form-row">
       <label class="form-label">Tags</label>
@@ -985,9 +1026,37 @@
       <button class="btn-save" onclick="saveGroup()">Create Team</button>
     </div>
   </div>
+</div><!-- end app -->
+
+<!-- USER MODAL -->
+<div id="user-modal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">New User</h2>
+      <button class="modal-close" onclick="TF.closeUserModal()">✕</button>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Full Name</label>
+      <input type="text" id="u-name" class="form-input" placeholder="e.g. John Doe">
+    </div>
+    <div class="form-row">
+      <label class="form-label">Email Address</label>
+      <input type="email" id="u-email" class="form-input" placeholder="e.g. john@example.com">
+    </div>
+    <div class="form-row">
+      <label class="form-label">Role</label>
+      <select id="u-role" class="form-input">
+        <option value="member">Member</option>
+        <option value="admin">Admin</option>
+      </select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="TF.closeUserModal()">Cancel</button>
+      <button class="btn-save" onclick="TF.saveUser()">Create User</button>
+    </div>
+  </div>
 </div>
 
-<!-- TOAST CONTAINER -->
 <div class="toast-container" id="toasts"></div>
 
 <script>

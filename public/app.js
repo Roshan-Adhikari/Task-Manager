@@ -19,6 +19,8 @@ let currentStatus = 'all';
 let currentPriority = 'all';
 let currentView = 'board';
 let selectedColor = '#7c6af7';
+let availableTags = [];
+let selectedTaskTags = []; // Temp storage for modal state
 
 const GROUP_COLORS = [
   '#7c6af7','#3ecf8e','#f59f00','#f03e3e',
@@ -186,21 +188,23 @@ function logout() {
 
 async function loadData() {
   try {
-    // Parallel fetch
-    const [tasksData, teamsData, usersData] = await Promise.all([
+    const [tasksData, teamsData, usersData, tagsData] = await Promise.all([
       api('/api/tasks'),
       api('/api/teams'),
       api('/auth/users'),
+      api('/api/tags'),
     ]);
 
     tasks = tasksData;
     teams = teamsData;
     allUsers = usersData;
+    availableTags = tagsData;
 
     renderSidebar();
     renderTasks();
     updateStats();
     populateAssigneeDropdown();
+    populateTagSelect();
     showToast('Data loaded from server ✓', 'success');
   } catch (err) {
     console.error('Load data error:', err);
@@ -298,24 +302,34 @@ function setFilter(f, el) {
   document.getElementById('page-title').textContent = titles[f] || f;
 
   // Toggle views
+  const views = ['board-view', 'list-view', 'activity-view', 'users-view', 'tags-view'];
+  views.forEach(v => document.getElementById(v).style.display = 'none');
+  
   if (f === 'activity') {
     document.getElementById('stats-bar').style.display = 'none';
     document.getElementById('filters-bar').style.display = 'none';
-    document.getElementById('board-view').style.display = 'none';
-    document.getElementById('list-view').style.display = 'none';
     document.getElementById('activity-view').style.display = 'block';
     document.getElementById('add-task-btn').style.display = 'none';
     loadActivity();
+  } else if (f === 'users') {
+    document.getElementById('stats-bar').style.display = 'none';
+    document.getElementById('filters-bar').style.display = 'none';
+    document.getElementById('users-view').style.display = 'block';
+    document.getElementById('add-task-btn').style.display = 'none';
+    renderUsers();
+  } else if (f === 'tags') {
+    document.getElementById('stats-bar').style.display = 'none';
+    document.getElementById('filters-bar').style.display = 'none';
+    document.getElementById('tags-view').style.display = 'block';
+    document.getElementById('add-task-btn').style.display = 'none';
+    renderTags();
   } else {
     document.getElementById('stats-bar').style.display = 'grid';
     document.getElementById('filters-bar').style.display = 'flex';
-    document.getElementById('activity-view').style.display = 'none';
     document.getElementById('add-task-btn').style.display = 'flex';
     if (currentView === 'board') {
       document.getElementById('board-view').style.display = 'grid';
-      document.getElementById('list-view').style.display = 'none';
     } else {
-      document.getElementById('board-view').style.display = 'none';
       document.getElementById('list-view').style.display = 'flex';
     }
     renderTasks();
@@ -488,12 +502,22 @@ function taskCard(t) {
         </div>
       </div>
       ${t.description ? `<div class="task-desc">${escapeHtml(t.description)}</div>` : ''}
+      
+      ${t.tags ? `
+      <div style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:10px;">
+        ${t.tags.split(',').map(tagStr => {
+          const tag = availableTags.find(at => at.name === tagStr.trim());
+          const tagColor = tag ? tag.color : 'var(--accent)';
+          return `<span class="task-badge" style="background:${tagColor}15; color:${tagColor}">${escapeHtml(tagStr.trim())}</span>`;
+        }).join('')}
+      </div>` : ''}
+
       <div class="task-meta">
         <span class="task-badge" style="background:${pc.bg};color:${pc.text}">${t.priority}</span>
         ${teamName ? `<span class="task-badge" style="background:${teamColor}22;color:${teamColor}">${escapeHtml(teamName)}</span>` : ''}
         ${dueDisplay ? `<span class="due-badge" style="${overdue ? 'color:var(--red)' : ''}">📅 ${dueDisplay}</span>` : ''}
         ${assigneeName ? `<div class="task-assignee">
-          <div class="assignee-av"${t.assigned_avatar ? '' : ''}>${t.assigned_avatar ? `<img src="${t.assigned_avatar}">` : getInitials(assigneeName)}</div>
+          <div class="assignee-av">${t.assigned_avatar ? `<img src="${t.assigned_avatar}">` : getInitials(assigneeName)}</div>
         </div>` : ''}
       </div>
       <div class="task-updated">Updated ${timeAgo(t.updated_at)}</div>
@@ -605,11 +629,18 @@ function openTaskModal() {
   document.getElementById('f-priority').value = 'medium';
   document.getElementById('f-assignee').value = '';
   document.getElementById('f-due').value = '';
-  document.getElementById('f-group').value = '';
   document.getElementById('f-tags').value = '';
+  selectedTaskTags = [];
+  renderTaskTags();
+  
+  // Default to Individual assign
+  document.getElementById('f-assign-type').value = 'user';
+  toggleAssignSection();
+
   document.getElementById('task-activity-section').style.display = 'none';
   document.getElementById('task-modal').classList.add('open');
   populateAssigneeDropdown();
+  populateTagSelect();
   setTimeout(() => document.getElementById('f-title').focus(), 100);
 }
 
@@ -623,11 +654,23 @@ async function openEditModal(id) {
     document.getElementById('f-status').value = data.status || 'todo';
     document.getElementById('f-priority').value = data.priority || 'medium';
     document.getElementById('f-due').value = data.due_date || '';
-    document.getElementById('f-group').value = data.team_id || '';
-    document.getElementById('f-tags').value = data.tags || '';
+    
+    // Set assignment state
+    if (data.team_id && !data.assigned_to) {
+      document.getElementById('f-assign-type').value = 'team';
+      document.getElementById('f-group').value = data.team_id;
+      document.getElementById('f-assignee').value = '';
+    } else {
+      document.getElementById('f-assign-type').value = 'user';
+      document.getElementById('f-group').value = data.team_id || '';
+      document.getElementById('f-assignee').value = data.assigned_email || data.assigned_to_email || '';
+    }
+    toggleAssignSection();
 
-    populateAssigneeDropdown();
-    document.getElementById('f-assignee').value = data.assigned_email || data.assigned_to_email || '';
+    // Set Tags
+    selectedTaskTags = data.tags ? data.tags.split(',').map(s => s.trim()).filter(Boolean) : [];
+    renderTaskTags();
+    populateTagSelect();
 
     // Show activity log
     if (data.updates && data.updates.length > 0) {
@@ -670,7 +713,11 @@ async function saveTask() {
   let assignedTo = null;
   let assignedEmail = null;
 
-  if (assigneeVal) {
+  const isTeamAssign = document.getElementById('f-assign-type').value === 'team';
+  if (isTeamAssign) {
+    assignedTo = null;
+    assignedEmail = null;
+  } else if (assigneeVal) {
     // Check if the input matches any existing user exactly by email
     const user = allUsers.find(u => u.email.toLowerCase() === assigneeVal.toLowerCase());
     if (user) {
@@ -694,7 +741,7 @@ async function saveTask() {
     assigned_to_email: assignedEmail,
     team_id: document.getElementById('f-group').value || null,
     due_date: document.getElementById('f-due').value || null,
-    tags: document.getElementById('f-tags').value.trim(),
+    tags: selectedTaskTags.join(','),
   };
 
   try {
@@ -812,10 +859,13 @@ async function saveGroup() {
       });
       showToast(`Team "${name}" created ✓`, 'success');
 
-      // Reopen to show member management
-      closeGroupModal();
-      await loadData();
-      openGroupModal(newTeam.id);
+      // Update local state without reopening
+      editingGroupId = newTeam.id;
+      document.getElementById('group-modal-title').textContent = 'Edit Team';
+      document.getElementById('group-save-btn').textContent = 'Save Team';
+      document.getElementById('team-members-section').style.display = 'block';
+      await loadData(); // refresh sidebar in background
+      renderTeamMembers(newTeam.id);
       return;
     }
 
@@ -930,9 +980,183 @@ document.getElementById('member-email-input').addEventListener('keydown', e => {
 });
 
 // ═══════════════════════════════════════════════════════════
-//  INIT
+//  ADDITIONAL UI HELPERS
 // ═══════════════════════════════════════════════════════════
 
+function toggleAssignSection() {
+  const type = document.getElementById('f-assign-type').value;
+  const userSec = document.getElementById('assign-user-section');
+  const teamSec = document.getElementById('assign-team-section');
+  
+  if (type === 'user') {
+    userSec.style.display = 'block';
+    teamSec.style.display = 'none';
+  } else {
+    userSec.style.display = 'none';
+    teamSec.style.display = 'block';
+  }
+}
+
+// TAGS Logic
+function populateTagSelect() {
+  const sel = document.getElementById('tag-select-add');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Add a tag...</option>' + availableTags.map(t => 
+    `<option value="${escapeHtml(t.name)}">${escapeHtml(t.name)}</option>`
+  ).join('');
+}
+
+function renderTaskTags() {
+  const container = document.getElementById('tag-picker-container');
+  if (!container) return;
+  container.innerHTML = selectedTaskTags.map(t => {
+    const tag = availableTags.find(at => at.name === t);
+    const color = tag ? tag.color : 'var(--accent)';
+    return `
+      <span class="task-badge" style="background:${color}22; color:${color}; display:flex; align-items:center; gap:6px;">
+        ${escapeHtml(t)}
+        <span style="cursor:pointer; opacity:0.6;" onclick="TF.removeTagFromTask('${escapeHtml(t)}')">✕</span>
+      </span>
+    `;
+  }).join('');
+}
+
+function addTagToTask(tagName) {
+  if (!tagName) return;
+  if (!selectedTaskTags.includes(tagName)) {
+    selectedTaskTags.push(tagName);
+    renderTaskTags();
+  }
+}
+
+function removeTagFromTask(tagName) {
+  selectedTaskTags = selectedTaskTags.filter(t => t !== tagName);
+  renderTaskTags();
+}
+
+async function saveTag() {
+  const nameInput = document.getElementById('new-tag-name');
+  const colorInput = document.getElementById('new-tag-color');
+  const name = nameInput.value.trim();
+  if (!name) return;
+
+  try {
+    await api('/api/tags', {
+      method: 'POST',
+      body: JSON.stringify({ name, color: colorInput.value })
+    });
+    nameInput.value = '';
+    await loadData();
+    renderTags();
+    showToast('Tag created', 'success');
+  } catch (err) {
+    showToast('Failed to create tag', 'error');
+  }
+}
+
+function renderTags() {
+  const container = document.getElementById('tags-list-container');
+  container.innerHTML = availableTags.map(t => `
+    <div style="background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span class="task-badge" style="background:${t.color}22; color:${t.color}">${escapeHtml(t.name)}</span>
+        <button onclick="TF.deleteTag(${t.id})" style="background:none; border:none; color:var(--text3); cursor:pointer;">🗑</button>
+      </div>
+      <div style="font-size:10px; color:var(--text3);">${t.color}</div>
+    </div>
+  `).join('');
+}
+
+async function deleteTag(id) {
+  if (!confirm('Delete this tag?')) return;
+  try {
+    await api(`/api/tags/${id}`, { method: 'DELETE' });
+    await loadData();
+    renderTags();
+  } catch (e) { showToast('Delete failed', 'error'); }
+}
+
+// User Management view
+function renderUsers() {
+  const container = document.getElementById('users-list-container');
+  container.innerHTML = `
+    <table style="width:100%; border-collapse:collapse; background:var(--surface); border-radius:12px; overflow:hidden; border:1px solid var(--border);">
+      <thead style="background:var(--bg2); border-bottom:1px solid var(--border);">
+        <tr style="text-align:left;">
+          <th style="padding:16px;">User</th>
+          <th style="padding:16px;">Email</th>
+          <th style="padding:16px;">Role</th>
+          <th style="padding:16px;">Joined</th>
+          <th style="padding:16px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${allUsers.map(u => `
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:16px; display:flex; align-items:center; gap:10px;">
+              <div class="user-avatar">${u.avatar_url ? `<img src="${u.avatar_url}">` : getInitials(u.name)}</div>
+              ${escapeHtml(u.name)}
+            </td>
+            <td style="padding:16px; color:var(--text2);">${escapeHtml(u.email)}</td>
+            <td style="padding:16px;"><span class="member-role ${u.role}">${u.role}</span></td>
+            <td style="padding:16px; color:var(--text3); font-size:12px;">${new Date(u.created_at).toLocaleDateString()}</td>
+            <td style="padding:16px;">
+               <button onclick="TF.deleteUser(${u.id})" style="background:none; border:none; color:var(--text3); cursor:pointer;">🗑</button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function deleteUser(id) {
+  if (!confirm('Delete this user?')) return;
+  try {
+    await api(`/api/users/${id}`, { method: 'DELETE' });
+    await loadData();
+    renderUsers();
+    showToast('User removed', 'info');
+  } catch (e) { showToast('Delete failed', 'error'); }
+}
+
+// User Modal Logic
+function openUserModal() {
+  document.getElementById('u-name').value = '';
+  document.getElementById('u-email').value = '';
+  document.getElementById('u-role').value = 'member';
+  document.getElementById('user-modal').classList.add('open');
+}
+
+function closeUserModal() {
+  document.getElementById('user-modal').classList.remove('open');
+}
+
+async function saveUser() {
+  const name = document.getElementById('u-name').value.trim();
+  const email = document.getElementById('u-email').value.trim();
+  const role = document.getElementById('u-role').value;
+  
+  if (!name || !email) {
+    showToast('Name and email required', 'error');
+    return;
+  }
+
+  try {
+    await api('/api/users', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, role })
+    });
+    showToast('User created ✓', 'success');
+    closeUserModal();
+    await loadData();
+    renderUsers();
+  } catch (err) {
+    showToast('Failed to create user: ' + err.message, 'error');
+  }
+}
+
+// Boot
 // Export all public functions for onclick handlers
 window.TF = {
   demoLogin, logout, setFilter, setGroupFilter, setStatusFilter,
@@ -940,16 +1164,11 @@ window.TF = {
   closeTaskModal, saveTask, deleteTask, toggleDone,
   openGroupModal, closeGroupModal, selectColor, saveGroup,
   addTeamMember, removeMember, renderTasks,
+  toggleAssignSection, addTagToTask, removeTagFromTask, saveTag, deleteTag, 
+  deleteUser, openUserModal, closeUserModal, saveUser
 };
 
-// Boot
 (async function init() {
-  // Try auto-login
   const loggedIn = await tryAutoLogin();
-  if (loggedIn) {
-    enterApp();
-  } else {
-    // Show auth screen, init Google
-    initGoogleAuth();
-  }
+  if (loggedIn) enterApp(); else initGoogleAuth();
 })();

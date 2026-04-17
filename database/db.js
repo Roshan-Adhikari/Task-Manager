@@ -80,6 +80,15 @@ async function initDB() {
   `);
 
   await db.query(`
+    CREATE TABLE IF NOT EXISTS tags (
+      id SERIAL PRIMARY KEY,
+      name TEXT UNIQUE NOT NULL,
+      color TEXT DEFAULT '#7c6af7',
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await db.query(`
     CREATE TABLE IF NOT EXISTS task_updates (
       id SERIAL PRIMARY KEY,
       task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -142,10 +151,13 @@ const queries = {
       [name, avatar_url, id]),
   createInvitedUser: async (email, name) =>
     runQuery('INSERT INTO users (email, name, role) VALUES ($1, $2, "member") ON CONFLICT (email) DO NOTHING', [email, name]),
-  getAllUsers: async () => queryAll('SELECT id, email, name, avatar_url, role, created_at FROM users'),
+  getAllUsers: async () => queryAll('SELECT id, email, name, avatar_url, role, created_at FROM users ORDER BY name ASC'),
   updateUserGoogleId: async (googleId, avatarUrl, name, id) =>
     runQuery('UPDATE users SET google_id = $1, avatar_url = $2, name = $3 WHERE id = $4',
       [googleId, avatarUrl, name, id]),
+  deleteUser: async (id) => runQuery('DELETE FROM users WHERE id = $1', [id]),
+  updateUser: async (name, email, role, id) =>
+    runQuery('UPDATE users SET name = $1, email = $2, role = $3 WHERE id = $4', [name, email, role, id]),
 
   // Teams
   getAllTeams: async () => queryAll('SELECT * FROM teams ORDER BY created_at DESC'),
@@ -265,6 +277,11 @@ const queries = {
     runQuery(`INSERT INTO task_updates (task_id, user_id, field_changed, old_value, new_value, comment)
       VALUES ($1, $2, $3, $4, $5, $6)`,
       [taskId, userId, fieldChanged, oldValue, newValue, comment]),
+
+  // Tags
+  getAllTags: async () => queryAll('SELECT * FROM tags ORDER BY name ASC'),
+  createTag: async (name, color) => runQuery('INSERT INTO tags (name, color) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING', [name, color]),
+  deleteTag: async (id) => runQuery('DELETE FROM tags WHERE id = $1', [id]),
 };
 
 module.exports = { initDB, queryAll, queryOne, runQuery, queries, getPool };
