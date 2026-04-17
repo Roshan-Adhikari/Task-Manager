@@ -6,9 +6,9 @@ const { sendAssignmentEmail } = require('../services/emailService');
 const router = express.Router();
 
 // ── GET ALL TASKS ──────────────────────────────────────────────────
-router.get('/', authMiddleware, (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
   try {
-    const tasks = queries.getAllTasks();
+    const tasks = await queries.getAllTasks();
     res.json(tasks);
   } catch (err) {
     console.error('Get tasks error:', err);
@@ -17,9 +17,9 @@ router.get('/', authMiddleware, (req, res) => {
 });
 
 // ── GET MY TASKS ───────────────────────────────────────────────────
-router.get('/my', authMiddleware, (req, res) => {
+router.get('/my', authMiddleware, async (req, res) => {
   try {
-    const tasks = queries.getTasksByUser(req.user.id);
+    const tasks = await queries.getTasksByUser(req.user.id);
     res.json(tasks);
   } catch (err) {
     console.error('Get my tasks error:', err);
@@ -28,9 +28,9 @@ router.get('/my', authMiddleware, (req, res) => {
 });
 
 // ── GET OVERDUE TASKS ──────────────────────────────────────────────
-router.get('/overdue', authMiddleware, (req, res) => {
+router.get('/overdue', authMiddleware, async (req, res) => {
   try {
-    const tasks = queries.getOverdueTasks();
+    const tasks = await queries.getOverdueTasks();
     res.json(tasks);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch overdue tasks' });
@@ -38,10 +38,10 @@ router.get('/overdue', authMiddleware, (req, res) => {
 });
 
 // ── GET RECENT ACTIVITY ────────────────────────────────────────────
-router.get('/activity', authMiddleware, (req, res) => {
+router.get('/activity', authMiddleware, async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
-    const updates = queries.getRecentUpdates(limit);
+    const updates = await queries.getRecentUpdates(limit);
     res.json(updates);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch activity' });
@@ -49,12 +49,12 @@ router.get('/activity', authMiddleware, (req, res) => {
 });
 
 // ── GET SINGLE TASK ────────────────────────────────────────────────
-router.get('/:id', authMiddleware, (req, res) => {
+router.get('/:id', authMiddleware, async (req, res) => {
   try {
-    const task = queries.getTaskById(parseInt(req.params.id));
+    const task = await queries.getTaskById(parseInt(req.params.id));
     if (!task) return res.status(404).json({ error: 'Task not found' });
 
-    const updates = queries.getTaskUpdates(parseInt(req.params.id));
+    const updates = await queries.getTaskUpdates(parseInt(req.params.id));
     res.json({ ...task, updates });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch task' });
@@ -62,7 +62,7 @@ router.get('/:id', authMiddleware, (req, res) => {
 });
 
 // ── CREATE TASK ────────────────────────────────────────────────────
-router.post('/', authMiddleware, (req, res) => {
+router.post('/', authMiddleware, async (req, res) => {
   try {
     const { title, description, status, priority, assigned_to, assigned_to_email, team_id, due_date, tags } = req.body;
 
@@ -75,7 +75,7 @@ router.post('/', authMiddleware, (req, res) => {
     let assignedEmail = assigned_to_email || null;
 
     if (assigned_to_email && !assigned_to) {
-      const user = queries.findUserByEmail(assigned_to_email);
+      const user = await queries.findUserByEmail(assigned_to_email);
       if (user) {
         assignedUserId = user.id;
         assignedEmail = user.email;
@@ -83,11 +83,11 @@ router.post('/', authMiddleware, (req, res) => {
     }
 
     if (assignedUserId && !assignedEmail) {
-      const user = queries.findUserById(assignedUserId);
+      const user = await queries.findUserById(assignedUserId);
       if (user) assignedEmail = user.email;
     }
 
-    const result = queries.createTask(
+    const result = await queries.createTask(
       title.trim(),
       description || '',
       status || 'todo',
@@ -101,7 +101,7 @@ router.post('/', authMiddleware, (req, res) => {
     );
 
     // Log creation
-    queries.createTaskUpdate(
+    await queries.createTaskUpdate(
       result.lastInsertRowid,
       req.user.id,
       'created',
@@ -110,7 +110,7 @@ router.post('/', authMiddleware, (req, res) => {
       'Task created'
     );
 
-    const task = queries.getTaskById(result.lastInsertRowid);
+    const task = await queries.getTaskById(result.lastInsertRowid);
     
     // Trigger instant email notification
     if (assignedEmail) {
@@ -126,10 +126,10 @@ router.post('/', authMiddleware, (req, res) => {
 });
 
 // ── UPDATE TASK ────────────────────────────────────────────────────
-router.put('/:id', authMiddleware, (req, res) => {
+router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const taskId = parseInt(req.params.id);
-    const existing = queries.getTaskById(taskId);
+    const existing = await queries.getTaskById(taskId);
     if (!existing) return res.status(404).json({ error: 'Task not found' });
 
     const { title, description, status, priority, assigned_to, assigned_to_email, team_id, due_date, tags } = req.body;
@@ -139,7 +139,7 @@ router.put('/:id', authMiddleware, (req, res) => {
     let assignedEmail = assigned_to_email || existing.assigned_to_email;
 
     if (assigned_to_email && !assigned_to) {
-      const user = queries.findUserByEmail(assigned_to_email);
+      const user = await queries.findUserByEmail(assigned_to_email);
       if (user) {
         assignedUserId = user.id;
         assignedEmail = user.email;
@@ -147,7 +147,7 @@ router.put('/:id', authMiddleware, (req, res) => {
     }
 
     if (assignedUserId && !assignedEmail) {
-      const user = queries.findUserById(assignedUserId);
+      const user = await queries.findUserById(assignedUserId);
       if (user) assignedEmail = user.email;
     }
 
@@ -164,7 +164,7 @@ router.put('/:id', authMiddleware, (req, res) => {
     if (due_date !== undefined && due_date !== existing.due_date) changes.push({ field: 'due_date', old: existing.due_date || '', new: due_date || '' });
     if (assigned_to_email && assigned_to_email !== existing.assigned_to_email) changes.push({ field: 'assigned_to', old: existing.assigned_to_email || '', new: assigned_to_email });
 
-    queries.updateTask(
+    await queries.updateTask(
       newTitle,
       description !== undefined ? description : existing.description,
       newStatus,
@@ -179,14 +179,14 @@ router.put('/:id', authMiddleware, (req, res) => {
 
     // Log each change
     for (const change of changes) {
-      queries.createTaskUpdate(taskId, req.user.id, change.field, change.old || '', change.new || '', '');
+      await queries.createTaskUpdate(taskId, req.user.id, change.field, change.old || '', change.new || '', '');
     }
 
     if (changes.length === 0) {
-      queries.createTaskUpdate(taskId, req.user.id, 'updated', '', '', 'Task details updated');
+      await queries.createTaskUpdate(taskId, req.user.id, 'updated', '', '', 'Task details updated');
     }
 
-    const task = queries.getTaskById(taskId);
+    const task = await queries.getTaskById(taskId);
     
     // Trigger instant email notification if assignee changed
     if (assignedEmail && assignedEmail !== existing.assigned_to_email) {
@@ -202,12 +202,12 @@ router.put('/:id', authMiddleware, (req, res) => {
 });
 
 // ── DELETE TASK ─────────────────────────────────────────────────────
-router.delete('/:id', authMiddleware, (req, res) => {
+router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    const task = queries.getTaskById(parseInt(req.params.id));
+    const task = await queries.getTaskById(parseInt(req.params.id));
     if (!task) return res.status(404).json({ error: 'Task not found' });
 
-    queries.deleteTask(parseInt(req.params.id));
+    await queries.deleteTask(parseInt(req.params.id));
     res.json({ message: 'Task deleted' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete task' });

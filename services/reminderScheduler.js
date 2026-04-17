@@ -16,8 +16,8 @@ function startReminderScheduler() {
   setTimeout(async () => {
     console.log('\n🔔 Running initial reminder check...');
     try {
-      const overdueTasks = queries.getOverdueTasks();
-      const pendingTasks = queries.getPendingTasks();
+      const overdueTasks = await queries.getOverdueTasks();
+      const pendingTasks = await queries.getPendingTasks();
       const total = overdueTasks.length + pendingTasks.length;
       if (total > 0) {
         console.log(`   ⚠️  Found ${overdueTasks.length} overdue + ${pendingTasks.length} pending task(s) on startup`);
@@ -34,8 +34,8 @@ async function runReminderCheck() {
   console.log(`\n🔔 [${new Date().toISOString()}] Running reminder check...`);
 
   try {
-    const overdueTasks = queries.getOverdueTasks();
-    const pendingTasks = queries.getPendingTasks();
+    const overdueTasks = await queries.getOverdueTasks();
+    const pendingTasks = await queries.getPendingTasks();
 
     // Combine and deduplicate
     const allTasks = [...overdueTasks];
@@ -75,7 +75,7 @@ async function runReminderCheck() {
       // 2. Send to ALL team members if the task belongs to a team
       if (task.team_id) {
         try {
-          const members = queries.getTeamMembers(task.team_id);
+          const members = await queries.getTeamMembers(task.team_id);
           for (const member of members) {
             if (member.email) {
               addTaskForEmail(member.email, member.name, task);
@@ -97,7 +97,7 @@ async function runReminderCheck() {
         // Mark overdue tasks as reminded (only task-level, not per-user)
         for (const task of data.tasks) {
           if (overdueTasks.find(t => t.id === task.id)) {
-            queries.markReminderSent(task.id);
+            await queries.markReminderSent(task.id);
           }
         }
       } catch (err) {

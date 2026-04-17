@@ -17,12 +17,12 @@ router.post('/google', async (req, res) => {
     // Handle demo mode
     if (credential === 'DEMO_MODE') {
       // Create or find demo user
-      let user = queries.findUserByEmail('demo@taskflow.local');
+      let user = await queries.findUserByEmail('demo@taskflow.local');
       if (!user) {
-        const allUsers = queries.getAllUsers();
+        const allUsers = await queries.getAllUsers();
         const role = allUsers.length === 0 ? 'admin' : 'member';
-        queries.createUser('demo@taskflow.local', 'Demo User', null, 'demo', role);
-        user = queries.findUserByEmail('demo@taskflow.local');
+        await queries.createUser('demo@taskflow.local', 'Demo User', null, 'demo', role);
+        user = await queries.findUserByEmail('demo@taskflow.local');
       }
       const token = jwt.sign(
         { id: user.id, email: user.email, name: user.name, role: user.role, avatar_url: user.avatar_url },
@@ -42,28 +42,28 @@ router.post('/google', async (req, res) => {
     const { sub: googleId, email, name, picture } = payload;
 
     // Find or create user
-    let user = queries.findUserByGoogleId(googleId);
+    let user = await queries.findUserByGoogleId(googleId);
 
     if (!user) {
       // Check if email already exists (invited user)
-      user = queries.findUserByEmail(email);
+      user = await queries.findUserByEmail(email);
       if (user) {
         // Update existing invited user with Google ID
-        queries.updateUserGoogleId(googleId, picture, name, user.id);
-        user = queries.findUserById(user.id);
+        await queries.updateUserGoogleId(googleId, picture, name, user.id);
+        user = await queries.findUserById(user.id);
       } else {
         // Determine role — first user or admin email becomes admin
-        const allUsers = queries.getAllUsers();
+        const allUsers = await queries.getAllUsers();
         const isAdmin = allUsers.length === 0 || email === process.env.ADMIN_EMAIL;
         const role = isAdmin ? 'admin' : 'member';
 
-        const result = queries.createUser(email, name, picture, googleId, role);
-        user = queries.findUserById(result.lastInsertRowid);
+        const result = await queries.createUser(email, name, picture, googleId, role);
+        user = await queries.findUserById(result.lastInsertRowid);
       }
     } else {
       // Update login timestamp and info
-      queries.updateUserLogin(name, picture, user.id);
-      user = queries.findUserById(user.id);
+      await queries.updateUserLogin(name, picture, user.id);
+      user = await queries.findUserById(user.id);
     }
 
     // Issue JWT
@@ -91,8 +91,8 @@ router.post('/google', async (req, res) => {
 });
 
 // ── GET CURRENT USER ───────────────────────────────────────────────
-router.get('/me', authMiddleware, (req, res) => {
-  const user = queries.findUserById(req.user.id);
+router.get('/me', authMiddleware, async (req, res) => {
+  const user = await queries.findUserById(req.user.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   res.json({
@@ -106,8 +106,8 @@ router.get('/me', authMiddleware, (req, res) => {
 });
 
 // ── GET ALL USERS (for assignment dropdown) ────────────────────────
-router.get('/users', authMiddleware, (req, res) => {
-  const users = queries.getAllUsers();
+router.get('/users', authMiddleware, async (req, res) => {
+  const users = await queries.getAllUsers();
   res.json(users);
 });
 

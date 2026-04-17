@@ -6,9 +6,9 @@ const { sendInviteEmail } = require('../services/emailService');
 const router = express.Router();
 
 // ── GET TEAM MEMBERS ───────────────────────────────────────────────
-router.get('/:teamId/members', authMiddleware, (req, res) => {
+router.get('/:teamId/members', authMiddleware, async (req, res) => {
   try {
-    const members = queries.getTeamMembers(parseInt(req.params.teamId));
+    const members = await queries.getTeamMembers(parseInt(req.params.teamId));
     res.json(members);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch members' });
@@ -24,17 +24,17 @@ router.post('/:teamId/members', authMiddleware, async (req, res) => {
     }
 
     const teamId = parseInt(req.params.teamId);
-    const team = queries.getTeamById(teamId);
+    const team = await queries.getTeamById(teamId);
     if (!team) return res.status(404).json({ error: 'Team not found' });
 
     // Find or create user by email
-    let user = queries.findUserByEmail(email.trim().toLowerCase());
+    let user = await queries.findUserByEmail(email.trim().toLowerCase());
 
     if (!user) {
       // Create invited user
       const nameFromEmail = email.split('@')[0].replace(/[._]/g, ' ');
-      queries.createInvitedUser(email.trim().toLowerCase(), nameFromEmail);
-      user = queries.findUserByEmail(email.trim().toLowerCase());
+      await queries.createInvitedUser(email.trim().toLowerCase(), nameFromEmail);
+      user = await queries.findUserByEmail(email.trim().toLowerCase());
 
       // Send invite email
       try {
@@ -49,15 +49,15 @@ router.post('/:teamId/members', authMiddleware, async (req, res) => {
     }
 
     // Check if already a member
-    const existing = queries.isTeamMember(teamId, user.id);
+    const existing = await queries.isTeamMember(teamId, user.id);
     if (existing) {
       return res.status(400).json({ error: 'User is already a team member' });
     }
 
     // Add to team
-    queries.addTeamMember(teamId, user.id, role || 'member');
+    await queries.addTeamMember(teamId, user.id, role || 'member');
 
-    const members = queries.getTeamMembers(teamId);
+    const members = await queries.getTeamMembers(teamId);
     res.status(201).json({ message: `${email} added to team`, members });
   } catch (err) {
     console.error('Add member error:', err);
@@ -66,12 +66,12 @@ router.post('/:teamId/members', authMiddleware, async (req, res) => {
 });
 
 // ── REMOVE MEMBER ──────────────────────────────────────────────────
-router.delete('/:teamId/members/:userId', authMiddleware, (req, res) => {
+router.delete('/:teamId/members/:userId', authMiddleware, async (req, res) => {
   try {
     const teamId = parseInt(req.params.teamId);
     const userId = parseInt(req.params.userId);
-    queries.removeTeamMember(teamId, userId);
-    const members = queries.getTeamMembers(teamId);
+    await queries.removeTeamMember(teamId, userId);
+    const members = await queries.getTeamMembers(teamId);
     res.json({ message: 'Member removed', members });
   } catch (err) {
     res.status(500).json({ error: 'Failed to remove member' });

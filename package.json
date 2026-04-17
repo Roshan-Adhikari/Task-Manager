@@ -8,13 +8,14 @@
     "dev": "node server.js"
   },
   "dependencies": {
-    "sql.js": "^1.11.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "google-auth-library": "^9.14.2",
     "jsonwebtoken": "^9.0.2",
     "node-cron": "^3.0.3",
-    "nodemailer": "^6.9.16"
+    "nodemailer": "^6.9.16",
+    "pg": "^8.20.0",
+    "sql.js": "^1.11.0"
   }
 }
