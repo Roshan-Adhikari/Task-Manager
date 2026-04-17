@@ -276,13 +276,12 @@ function escapeHtml(str) {
 // ═══════════════════════════════════════════════════════════
 
 function populateAssigneeDropdown() {
-  const sel = document.getElementById('f-assignee');
-  const currentVal = sel.value;
-  sel.innerHTML = '<option value="">Unassigned</option>';
+  const list = document.getElementById('assignee-list');
+  if (!list) return; // Wait until datalist exists
+  list.innerHTML = '';
   allUsers.forEach(u => {
-    sel.innerHTML += `<option value="${u.id}" data-email="${u.email}">${escapeHtml(u.name)} (${escapeHtml(u.email)})</option>`;
+    list.innerHTML += `<option value="${escapeHtml(u.email)}">${escapeHtml(u.name)}</option>`;
   });
-  sel.value = currentVal;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -628,7 +627,7 @@ async function openEditModal(id) {
     document.getElementById('f-tags').value = data.tags || '';
 
     populateAssigneeDropdown();
-    document.getElementById('f-assignee').value = data.assigned_to || '';
+    document.getElementById('f-assignee').value = data.assigned_email || data.assigned_to_email || '';
 
     // Show activity log
     if (data.updates && data.updates.length > 0) {
@@ -667,16 +666,31 @@ async function saveTask() {
   const title = document.getElementById('f-title').value.trim();
   if (!title) { showToast('Task title is required', 'error'); return; }
 
-  const assigneeSel = document.getElementById('f-assignee');
-  const assignedTo = assigneeSel.value || null;
-  const assignedEmail = assigneeSel.selectedOptions[0]?.dataset?.email || null;
+  const assigneeVal = document.getElementById('f-assignee').value.trim();
+  let assignedTo = null;
+  let assignedEmail = null;
+
+  if (assigneeVal) {
+    // Check if the input matches any existing user exactly by email
+    const user = allUsers.find(u => u.email.toLowerCase() === assigneeVal.toLowerCase());
+    if (user) {
+      assignedTo = user.id;
+      assignedEmail = user.email;
+    } else if (assigneeVal.includes('@')) {
+      // Freeform email typed
+      assignedEmail = assigneeVal;
+    } else {
+      showToast('Please enter a valid email to assign (or clear it for unassigned)', 'error');
+      return;
+    }
+  }
 
   const taskData = {
     title,
     description: document.getElementById('f-desc').value.trim(),
     status: document.getElementById('f-status').value,
     priority: document.getElementById('f-priority').value,
-    assigned_to: assignedTo ? parseInt(assignedTo) : null,
+    assigned_to: assignedTo,
     assigned_to_email: assignedEmail,
     team_id: document.getElementById('f-group').value || null,
     due_date: document.getElementById('f-due').value || null,

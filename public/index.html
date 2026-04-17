@@ -217,9 +217,8 @@
     <div class="form-grid">
       <div class="form-row">
         <label class="form-label">Assign To</label>
-        <select class="form-input" id="f-assignee">
-          <option value="">Unassigned</option>
-        </select>
+        <input type="text" list="assignee-list" class="form-input" id="f-assignee" placeholder="Type email or select user...">
+        <datalist id="assignee-list"></datalist>
       </div>
       <div class="form-row">
         <label class="form-label">Due Date</label>
