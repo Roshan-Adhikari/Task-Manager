@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TaskFlow — Team Task Manager</title>
+  <meta name="description" content="TaskFlow: Powerful team task manager with real-time updates, email reminders, and team collaboration.">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <!-- Google Identity Services -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+<!-- AUTH SCREEN -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">📋</div>
+    <h1>TaskFlow</h1>
+    <p>Your team's command center. Real-time tasks, email reminders, and seamless collaboration.</p>
+    <div id="google-signin-btn"></div>
+    <div class="auth-divider">or</div>
+    <button class="demo-btn" onclick="TF.demoLogin()">Try Demo Mode</button>
+    <p style="margin-top:18px; font-size:12px; color:var(--text3);">Sign in with your Google account to get started</p>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">📋</div>
+      <div class="sidebar-brand">Task<span>Flow</span></div>
+    </div>
+
+    <div class="sidebar-user">
+      <div class="user-avatar" id="user-av">U</div>
+      <div class="user-info">
+        <div class="user-name" id="user-name">User</div>
+        <div class="user-email" id="user-email">user@gmail.com</div>
+      </div>
+    </div>
+
+    <div class="sidebar-nav">
+      <div class="nav-label">Views</div>
+      <div class="nav-item active" data-filter="all" onclick="TF.setFilter('all',this)">
+        <span class="nav-icon">🏠</span> All Tasks
+        <span class="nav-count" id="cnt-all">0</span>
+      </div>
+      <div class="nav-item" data-filter="mine" onclick="TF.setFilter('mine',this)">
+        <span class="nav-icon">👤</span> My Tasks
+        <span class="nav-count" id="cnt-mine">0</span>
+      </div>
+      <div class="nav-item" data-filter="today" onclick="TF.setFilter('today',this)">
+        <span class="nav-icon">📅</span> Due Today
+        <span class="nav-count" id="cnt-today">0</span>
+      </div>
+      <div class="nav-item" data-filter="overdue" onclick="TF.setFilter('overdue',this)">
+        <span class="nav-icon">⚠️</span> Overdue
+        <span class="nav-count" id="cnt-overdue">0</span>
+      </div>
+      <div class="nav-item" data-filter="activity" onclick="TF.setFilter('activity',this)">
+        <span class="nav-icon">📊</span> Activity Log
+      </div>
+
+      <div class="nav-label" style="margin-top:8px;">Teams</div>
+      <div id="groups-nav"></div>
+
+      <div class="nav-item" onclick="TF.openGroupModal()">
+        <span class="nav-icon">＋</span> New Team
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      <button class="logout-btn" onclick="TF.logout()">
+        <span>⬅</span> Sign out
+      </button>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title" id="page-title">All Tasks</div>
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" placeholder="Search tasks…" id="search-input" oninput="TF.renderTasks()">
+      </div>
+      <div class="sync-status" id="sync-status">
+        <div class="sync-dot" id="sync-dot"></div>
+        <span id="sync-text">Connected</span>
+      </div>
+      <button class="add-task-btn" id="add-task-btn" onclick="TF.openTaskModal()">＋ Add Task</button>
+    </div>
+
+    <div class="content" id="main-content">
+      <!-- Stats -->
+      <div class="stats-bar" id="stats-bar">
+        <div class="stat-card">
+          <div class="stat-icon" style="background:var(--accent-bg)">📋</div>
+          <div class="stat-info">
+            <div class="stat-num" id="s-total">0</div>
+            <div class="stat-label">Total Tasks</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:var(--amber-bg)">⚡</div>
+          <div class="stat-info">
+            <div class="stat-num" id="s-progress">0</div>
+            <div class="stat-label">In Progress</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:var(--green-bg)">✅</div>
+          <div class="stat-info">
+            <div class="stat-num" id="s-done">0</div>
+            <div class="stat-label">Completed</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon" style="background:var(--red-bg)">🔥</div>
+          <div class="stat-info">
+            <div class="stat-num" id="s-overdue">0</div>
+            <div class="stat-label">Overdue</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="filters" id="filters-bar">
+        <div class="filter-chip active" data-status="all" onclick="TF.setStatusFilter('all',this)">All</div>
+        <div class="filter-chip" data-status="todo" onclick="TF.setStatusFilter('todo',this)">To Do</div>
+        <div class="filter-chip" data-status="inprogress" onclick="TF.setStatusFilter('inprogress',this)">In Progress</div>
+        <div class="filter-chip" data-status="done" onclick="TF.setStatusFilter('done',this)">Completed</div>
+        <div class="filter-chip" data-priority="high" onclick="TF.setPriorityFilter('high',this)">🔴 High</div>
+        <div class="filter-chip" data-priority="medium" onclick="TF.setPriorityFilter('medium',this)">🟡 Medium</div>
+        <div class="filter-chip" data-priority="low" onclick="TF.setPriorityFilter('low',this)">🟢 Low</div>
+
+        <div class="view-toggle">
+          <button class="view-btn active" onclick="TF.setView('board',this)" title="Board view">⊞</button>
+          <button class="view-btn" onclick="TF.setView('list',this)" title="List view">☰</button>
+        </div>
+      </div>
+
+      <!-- Board -->
+      <div class="board" id="board-view">
+        <div class="board-col">
+          <div class="board-col-header">
+            <div class="col-dot" style="background:var(--blue)"></div>
+            <div class="col-title">To Do</div>
+            <div class="col-count" style="background:var(--blue-bg);color:var(--blue)" id="cnt-todo-col">0</div>
+          </div>
+          <div class="board-col-body" id="col-todo"></div>
+        </div>
+        <div class="board-col">
+          <div class="board-col-header">
+            <div class="col-dot" style="background:var(--amber)"></div>
+            <div class="col-title">In Progress</div>
+            <div class="col-count" style="background:var(--amber-bg);color:var(--amber)" id="cnt-inp-col">0</div>
+          </div>
+          <div class="board-col-body" id="col-inprogress"></div>
+        </div>
+        <div class="board-col">
+          <div class="board-col-header">
+            <div class="col-dot" style="background:var(--green)"></div>
+            <div class="col-title">Done</div>
+            <div class="col-count" style="background:var(--green-bg);color:var(--green)" id="cnt-done-col">0</div>
+          </div>
+          <div class="board-col-body" id="col-done"></div>
+        </div>
+      </div>
+
+      <!-- List -->
+      <div class="task-list" id="list-view"></div>
+
+      <!-- Activity Log View -->
+      <div id="activity-view" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD/EDIT TASK MODAL -->
+<div class="modal-overlay" id="task-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">New Task</div>
+      <button class="modal-close" onclick="TF.closeTaskModal()">×</button>
+    </div>
+
+    <div class="form-row">
+      <label class="form-label">Task Title *</label>
+      <input type="text" class="form-input" id="f-title" placeholder="What needs to be done?">
+    </div>
+    <div class="form-row">
+      <label class="form-label">Description</label>
+      <textarea class="form-input" id="f-desc" placeholder="Add details, links, notes…"></textarea>
+    </div>
+    <div class="form-grid">
+      <div class="form-row">
+        <label class="form-label">Status</label>
+        <select class="form-input" id="f-status">
+          <option value="todo">To Do</option>
+          <option value="inprogress">In Progress</option>
+          <option value="done">Done</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Priority</label>
+        <select class="form-input" id="f-priority">
+          <option value="high">🔴 High</option>
+          <option value="medium">🟡 Medium</option>
+          <option value="low">🟢 Low</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-grid">
+      <div class="form-row">
+        <label class="form-label">Assign To</label>
+        <select class="form-input" id="f-assignee">
+          <option value="">Unassigned</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Due Date</label>
+        <input type="date" class="form-input" id="f-due">
+      </div>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Team</label>
+      <select class="form-input" id="f-group">
+        <option value="">No Team</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Tags</label>
+      <input type="text" class="form-input" id="f-tags" placeholder="design, frontend, api (comma separated)">
+    </div>
+
+    <!-- Task Activity (shown when editing) -->
+    <div id="task-activity-section" class="task-activity-section" style="display:none;">
+      <div class="task-activity-title">📊 Activity Log</div>
+      <div id="task-activity-list" class="activity-timeline"></div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="TF.closeTaskModal()">Cancel</button>
+      <button class="btn-save" onclick="TF.saveTask()">Save Task</button>
+    </div>
+  </div>
+</div>
+
+<!-- GROUP MODAL -->
+<div class="modal-overlay" id="group-modal">
+  <div class="modal" style="width:420px">
+    <div class="modal-header">
+      <div class="modal-title" id="group-modal-title">New Team</div>
+      <button class="modal-close" onclick="TF.closeGroupModal()">×</button>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Team Name *</label>
+      <input type="text" class="form-input" id="g-name" placeholder="e.g. Engineering, Design…">
+    </div>
+    <div class="form-row">
+      <label class="form-label">Color</label>
+      <div class="group-color-pick" id="color-pick"></div>
+    </div>
+
+    <!-- Members Section -->
+    <div class="form-row" id="team-members-section" style="display:none;">
+      <label class="form-label">Team Members</label>
+      <div class="add-member-row">
+        <input type="email" class="form-input" id="member-email-input" placeholder="Enter email to add member…">
+        <button class="add-member-btn" onclick="TF.addTeamMember()">＋ Add</button>
+      </div>
+      <div class="member-list" id="team-member-list"></div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="TF.closeGroupModal()">Cancel</button>
+      <button class="btn-save" id="group-save-btn" onclick="TF.saveGroup()">Create Team</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toasts"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
