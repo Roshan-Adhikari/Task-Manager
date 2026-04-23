@@ -177,8 +177,17 @@ function logout() {
   teams = [];
   allUsers = [];
   localStorage.removeItem('taskflow_token');
+  
   document.getElementById('auth-screen').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
+  
+  // Re-initialize Google Sign-In button
+  const btnContainer = document.getElementById('google-signin-btn');
+  if (btnContainer) {
+    btnContainer.innerHTML = ''; // Start fresh
+    initGoogleAuth();
+  }
+  
   showToast('Signed out successfully', 'info');
 }
 
@@ -191,7 +200,7 @@ async function loadData() {
     const [tasksData, teamsData, usersData, tagsData] = await Promise.all([
       api('/api/tasks'),
       api('/api/teams'),
-      api('/auth/users'),
+      api('/api/users'),
       api('/api/tags'),
     ]);
 
@@ -298,35 +307,38 @@ function setFilter(f, el) {
   document.querySelectorAll('.group-item').forEach(x => x.classList.remove('active'));
   el.classList.add('active');
 
-  const titles = { all:'All Tasks', mine:'My Tasks', today:'Due Today', overdue:'Overdue', activity:'Activity Log' };
+  const titles = { all:'All Tasks', mine:'My Tasks', today:'Due Today', overdue:'Overdue', activity:'Activity Log', users:'User Management', tags:'Tag Manager' };
   document.getElementById('page-title').textContent = titles[f] || f;
 
-  // Toggle views
+  // Toggle views — use querySelector for class-based elements
+  const statsBar = document.querySelector('.stats-bar');
+  const filtersBar = document.querySelector('.filters');
+  const addTaskBtn = document.querySelector('.add-task-btn');
   const views = ['board-view', 'list-view', 'activity-view', 'users-view', 'tags-view'];
   views.forEach(v => document.getElementById(v).style.display = 'none');
   
   if (f === 'activity') {
-    document.getElementById('stats-bar').style.display = 'none';
-    document.getElementById('filters-bar').style.display = 'none';
+    if (statsBar) statsBar.style.display = 'none';
+    if (filtersBar) filtersBar.style.display = 'none';
     document.getElementById('activity-view').style.display = 'block';
-    document.getElementById('add-task-btn').style.display = 'none';
+    if (addTaskBtn) addTaskBtn.style.display = 'none';
     loadActivity();
   } else if (f === 'users') {
-    document.getElementById('stats-bar').style.display = 'none';
-    document.getElementById('filters-bar').style.display = 'none';
+    if (statsBar) statsBar.style.display = 'none';
+    if (filtersBar) filtersBar.style.display = 'none';
     document.getElementById('users-view').style.display = 'block';
-    document.getElementById('add-task-btn').style.display = 'none';
+    if (addTaskBtn) addTaskBtn.style.display = 'none';
     renderUsers();
   } else if (f === 'tags') {
-    document.getElementById('stats-bar').style.display = 'none';
-    document.getElementById('filters-bar').style.display = 'none';
+    if (statsBar) statsBar.style.display = 'none';
+    if (filtersBar) filtersBar.style.display = 'none';
     document.getElementById('tags-view').style.display = 'block';
-    document.getElementById('add-task-btn').style.display = 'none';
+    if (addTaskBtn) addTaskBtn.style.display = 'none';
     renderTags();
   } else {
-    document.getElementById('stats-bar').style.display = 'grid';
-    document.getElementById('filters-bar').style.display = 'flex';
-    document.getElementById('add-task-btn').style.display = 'flex';
+    if (statsBar) statsBar.style.display = 'grid';
+    if (filtersBar) filtersBar.style.display = 'flex';
+    if (addTaskBtn) addTaskBtn.style.display = 'flex';
     if (currentView === 'board') {
       document.getElementById('board-view').style.display = 'grid';
     } else {
@@ -344,10 +356,15 @@ function setGroupFilter(id, el) {
   const g = getTeamById(id);
   document.getElementById('page-title').textContent = g?.name || 'Team';
 
-  document.getElementById('stats-bar').style.display = 'grid';
-  document.getElementById('filters-bar').style.display = 'flex';
+  const statsBar = document.querySelector('.stats-bar');
+  const filtersBar = document.querySelector('.filters');
+  const addTaskBtn = document.querySelector('.add-task-btn');
+  if (statsBar) statsBar.style.display = 'grid';
+  if (filtersBar) filtersBar.style.display = 'flex';
   document.getElementById('activity-view').style.display = 'none';
-  document.getElementById('add-task-btn').style.display = 'flex';
+  document.getElementById('users-view').style.display = 'none';
+  document.getElementById('tags-view').style.display = 'none';
+  if (addTaskBtn) addTaskBtn.style.display = 'flex';
   if (currentView === 'board') {
     document.getElementById('board-view').style.display = 'grid';
     document.getElementById('list-view').style.display = 'none';
@@ -438,11 +455,11 @@ function renderSidebar() {
           <span style="font-size:10px;color:var(--text3);font-family:var(--mono)" title="${memberCount} member(s)">${memberCount}👤</span>
           <span style="font-size:11px;color:var(--text3);font-family:var(--mono)">${taskCount}</span>
         </div>
-        <button onclick="event.stopPropagation();TF.openGroupModal(${g.id})" title="Manage team & members"
-          style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:2px 4px;border-radius:4px;transition:all 0.15s;opacity:0.5;"
-          onmouseover="this.style.opacity='1';this.style.color='var(--accent2)'"
-          onmouseout="this.style.opacity='0.5';this.style.color='var(--text3)'"
-        >⚙</button>
+        <button onclick="event.stopPropagation();TF.openGroupModal(${g.id})" title="Manage team & members" 
+          class="team-settings-btn"
+          style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:4px;border-radius:4px;transition:all 0.15s;opacity:0.8;">
+          ⚙️
+        </button>
       </div>
     `;
   }).join('');
@@ -797,28 +814,34 @@ async function toggleDone(id) {
 //  TEAMS & MEMBERS
 // ═══════════════════════════════════════════════════════════
 
-function openGroupModal(teamId) {
-  editingGroupId = teamId || null;
+function openGroupModal(teamId = null) {
+  editingGroupId = teamId;
+  const isEdit = !!teamId;
+  const modal = document.getElementById('group-modal');
+  const title = document.getElementById('group-modal-title');
+  const btn = document.getElementById('group-save-btn');
+  const delBtn = document.getElementById('group-delete-btn');
+  const membersSection = document.getElementById('team-members-section');
 
-  if (teamId) {
-    const team = getTeamById(teamId);
+  title.textContent = isEdit ? 'Edit Team' : 'New Team';
+  btn.textContent = isEdit ? 'Save Changes' : 'Create Team';
+  if (delBtn) delBtn.style.display = isEdit ? 'block' : 'none';
+  membersSection.style.display = isEdit ? 'block' : 'none';
+
+  if (isEdit) {
+    const team = teams.find(g => g.id == teamId);
     if (!team) return;
-    document.getElementById('group-modal-title').textContent = 'Edit Team';
     document.getElementById('g-name').value = team.name;
     selectedColor = team.color;
-    document.getElementById('group-save-btn').textContent = 'Save Team';
-    document.getElementById('team-members-section').style.display = 'block';
     renderTeamMembers(teamId);
   } else {
-    document.getElementById('group-modal-title').textContent = 'New Team';
     document.getElementById('g-name').value = '';
     selectedColor = GROUP_COLORS[0];
-    document.getElementById('group-save-btn').textContent = 'Create Team';
-    document.getElementById('team-members-section').style.display = 'none';
+    document.getElementById('team-member-list').innerHTML = '';
   }
 
   initColorPicker();
-  document.getElementById('group-modal').classList.add('open');
+  modal.classList.add('open');
   setTimeout(() => document.getElementById('g-name').focus(), 100);
 }
 
@@ -841,6 +864,31 @@ function selectColor(c, el) {
   el.classList.add('selected');
 }
 
+async function deleteTeam() {
+  const teamId = editingGroupId;
+  if (!teamId) return;
+  
+  if (!confirm('Are you sure you want to delete this team? All members and task assignments will be removed.')) {
+    return;
+  }
+
+  try {
+    await api(`/api/teams/${teamId}`, { method: 'DELETE' });
+    
+    closeGroupModal();
+    showToast('Team deleted', 'info');
+    await loadData();
+    
+    // Reset filter if we were viewing the deleted team
+    if (currentFilter === 'team_' + teamId) {
+      setFilter('all', document.querySelector('.nav-item[data-filter="all"]'));
+    }
+  } catch (err) {
+    console.error('Delete team error:', err);
+    showToast('Failed to delete team: ' + err.message, 'error');
+  }
+}
+
 async function saveGroup() {
   const name = document.getElementById('g-name').value.trim();
   if (!name) { showToast('Team name required', 'error'); return; }
@@ -859,12 +907,13 @@ async function saveGroup() {
       });
       showToast(`Team "${name}" created ✓`, 'success');
 
-      // Update local state without reopening
+      // transition to edit mode
       editingGroupId = newTeam.id;
       document.getElementById('group-modal-title').textContent = 'Edit Team';
-      document.getElementById('group-save-btn').textContent = 'Save Team';
+      document.getElementById('group-save-btn').textContent = 'Save Changes';
+      document.getElementById('group-delete-btn').style.display = 'block';
       document.getElementById('team-members-section').style.display = 'block';
-      await loadData(); // refresh sidebar in background
+      await loadData();
       renderTeamMembers(newTeam.id);
       return;
     }
@@ -905,23 +954,28 @@ async function renderTeamMembers(teamId) {
 }
 
 async function addTeamMember() {
-  if (!editingGroupId) return;
+  const teamId = editingGroupId;
+  if (!teamId) return;
   const emailInput = document.getElementById('member-email-input');
+  const nameInput = document.getElementById('member-name-input');
   const email = emailInput.value.trim();
+  const name = nameInput.value.trim();
+
   if (!email) { showToast('Enter an email address', 'error'); return; }
   if (!email.includes('@')) { showToast('Enter a valid email', 'error'); return; }
 
   try {
-    const result = await api(`/api/teams/${editingGroupId}/members`, {
+    const result = await api(`/api/teams/${teamId}/members`, {
       method: 'POST',
-      body: JSON.stringify({ email })
+      body: JSON.stringify({ email, name })
     });
     emailInput.value = '';
+    nameInput.value = '';
     showToast(result.message || `${email} added ✓`, 'success');
-    renderTeamMembers(editingGroupId);
+    renderTeamMembers(teamId);
 
     // Reload users for assignee dropdown
-    allUsers = await api('/auth/users');
+    allUsers = await api('/api/users');
   } catch (err) {
     showToast('Failed to add: ' + err.message, 'error');
   }
@@ -975,8 +1029,11 @@ document.getElementById('group-modal').addEventListener('click', e => {
 });
 
 // Enter key in member email input
-document.getElementById('member-email-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') { e.preventDefault(); addTeamMember(); }
+document.getElementById('member-email-input')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); TF.addTeamMember(); }
+});
+document.getElementById('member-name-input')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); TF.addTeamMember(); }
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -999,26 +1056,40 @@ function toggleAssignSection() {
 
 // TAGS Logic
 function populateTagSelect() {
-  const sel = document.getElementById('tag-select-add');
-  if (!sel) return;
-  sel.innerHTML = '<option value="">Add a tag...</option>' + availableTags.map(t => 
-    `<option value="${escapeHtml(t.name)}">${escapeHtml(t.name)}</option>`
-  ).join('');
+  // Populate tag picker in task modal with clickable badges
+  const picker = document.getElementById('task-tag-picker');
+  if (!picker) return;
+  // Render existing selected tags + available tags to add
+  renderTaskTags();
 }
 
 function renderTaskTags() {
-  const container = document.getElementById('tag-picker-container');
+  const container = document.getElementById('task-tag-picker');
   if (!container) return;
-  container.innerHTML = selectedTaskTags.map(t => {
+
+  // Selected tags (with remove button)
+  const selectedHtml = selectedTaskTags.map(t => {
     const tag = availableTags.find(at => at.name === t);
     const color = tag ? tag.color : 'var(--accent)';
     return `
-      <span class="task-badge" style="background:${color}22; color:${color}; display:flex; align-items:center; gap:6px;">
-        ${escapeHtml(t)}
-        <span style="cursor:pointer; opacity:0.6;" onclick="TF.removeTagFromTask('${escapeHtml(t)}')">✕</span>
+      <span class="task-badge" style="background:${color}22; color:${color}; display:flex; align-items:center; gap:6px; cursor:pointer;"
+        onclick="TF.removeTagFromTask('${escapeHtml(t)}')" title="Click to remove">
+        ${escapeHtml(t)} ✕
       </span>
     `;
   }).join('');
+
+  // Available tags not yet selected
+  const availableHtml = availableTags
+    .filter(t => !selectedTaskTags.includes(t.name))
+    .map(t => `
+      <span class="task-badge" style="background:${t.color}10; color:${t.color}; border:1px dashed ${t.color}55; cursor:pointer; opacity:0.7;"
+        onclick="TF.addTagToTask('${escapeHtml(t.name)}')" title="Click to add">
+        + ${escapeHtml(t.name)}
+      </span>
+    `).join('');
+
+  container.innerHTML = selectedHtml + availableHtml;
 }
 
 function addTagToTask(tagName) {
@@ -1162,7 +1233,7 @@ window.TF = {
   demoLogin, logout, setFilter, setGroupFilter, setStatusFilter,
   setPriorityFilter, setView, openTaskModal, openEditModal,
   closeTaskModal, saveTask, deleteTask, toggleDone,
-  openGroupModal, closeGroupModal, selectColor, saveGroup,
+  openGroupModal, closeGroupModal, selectColor, saveGroup, deleteTeam,
   addTeamMember, removeMember, renderTasks,
   toggleAssignSection, addTagToTask, removeTagFromTask, saveTag, deleteTag, 
   deleteUser, openUserModal, closeUserModal, saveUser

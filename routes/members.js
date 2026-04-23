@@ -32,8 +32,9 @@ router.post('/:teamId/members', authMiddleware, async (req, res) => {
 
     if (!user) {
       // Create invited user
-      const nameFromEmail = email.split('@')[0].replace(/[._]/g, ' ');
-      await queries.createInvitedUser(email.trim().toLowerCase(), nameFromEmail);
+      const { name } = req.body;
+      const finalName = name || email.split('@')[0].replace(/[._]/g, ' ');
+      await queries.createInvitedUser(email.trim().toLowerCase(), finalName);
       user = await queries.findUserByEmail(email.trim().toLowerCase());
 
       // Send invite email
