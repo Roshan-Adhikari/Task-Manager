@@ -380,10 +380,12 @@ function setGroupFilter(id, el) {
   const addTaskBtn = document.querySelector('.add-task-btn');
   if (statsBar) statsBar.style.display = 'grid';
   if (filtersBar) filtersBar.style.display = 'flex';
-  document.getElementById('activity-view').style.display = 'none';
-  document.getElementById('users-view').style.display = 'none';
-  document.getElementById('tags-view').style.display = 'none';
   if (addTaskBtn) addTaskBtn.style.display = 'flex';
+
+  // Hide all special views
+  const views = ['activity-view', 'users-view', 'tags-view', 'calendar-view', 'slack-view'];
+  views.forEach(v => document.getElementById(v).style.display = 'none');
+
   if (currentView === 'board') {
     document.getElementById('board-view').style.display = 'grid';
     document.getElementById('list-view').style.display = 'none';
