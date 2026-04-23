@@ -79,18 +79,48 @@ router.post('/send', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'User IDs and message are required' });
     }
 
+    if (!SLACK_BOT_TOKEN) {
+      return res.status(400).json({ error: 'SLACK_BOT_TOKEN not configured' });
+    }
+
     const results = [];
     for (const userId of user_ids) {
-      const result = await slackAPI('chat.postMessage', {
-        channel: userId,
-        text: message,
-        mrkdwn: true,
-      });
-      results.push({ userId, ok: result.ok, error: result.error });
+      try {
+        // Step 1: Open a DM conversation with the user
+        const openResult = await slackAPI('conversations.open', { users: userId });
+        console.log(`Slack conversations.open for ${userId}:`, JSON.stringify(openResult));
+
+        if (!openResult.ok) {
+          results.push({ userId, ok: false, error: openResult.error || 'Failed to open DM' });
+          continue;
+        }
+
+        const dmChannelId = openResult.channel.id;
+
+        // Step 2: Send message to the DM channel
+        const sendResult = await slackAPI('chat.postMessage', {
+          channel: dmChannelId,
+          text: message,
+          mrkdwn: true,
+        });
+        console.log(`Slack chat.postMessage to ${userId} (${dmChannelId}):`, JSON.stringify(sendResult));
+
+        results.push({ userId, ok: sendResult.ok, error: sendResult.error });
+      } catch (innerErr) {
+        console.error(`Slack error for user ${userId}:`, innerErr);
+        results.push({ userId, ok: false, error: innerErr.message });
+      }
     }
 
     const succeeded = results.filter(r => r.ok).length;
     const failed = results.filter(r => !r.ok);
+
+    if (succeeded === 0 && failed.length > 0) {
+      return res.status(400).json({
+        error: `All messages failed: ${failed.map(f => f.error).join(', ')}`,
+        results
+      });
+    }
 
     res.json({
       message: `Sent to ${succeeded} user(s)${failed.length > 0 ? `, ${failed.length} failed` : ''}`,
@@ -100,7 +130,7 @@ router.post('/send', authMiddleware, async (req, res) => {
     });
   } catch (err) {
     console.error('Slack send error:', err);
-    res.status(500).json({ error: 'Failed to send Slack message' });
+    res.status(500).json({ error: 'Failed to send Slack message: ' + err.message });
   }
 });
 
