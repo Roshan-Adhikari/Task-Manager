@@ -211,7 +211,7 @@ async function sendMeetingInvite(meeting, organizerEmail, organizerName) {
   const allRecipients = [...new Set([...attendeeEmails, organizerEmail])];
   if (!allRecipients.length) return;
 
-  // Build ICS date strings (YYYYMMDDTHHMMSS)
+  // Build ICS date strings with timezone (YYYYMMDDTHHMMSS)
   const dateStr = (meeting.meeting_date || '').replace(/-/g, '');
   const startTime = (meeting.start_time || '10:00').replace(/:/g, '') + '00';
   const endTime = (meeting.end_time || '11:00').replace(/:/g, '') + '00';
@@ -225,16 +225,26 @@ async function sendMeetingInvite(meeting, organizerEmail, organizerName) {
     `ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=${email}:mailto:${email}`
   ).join('\r\n');
 
-  // ICS content — METHOD:REQUEST makes it a proper calendar invite
+  // ICS content with VTIMEZONE for proper calendar support
   const icsContent = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//TaskFlow//Meeting//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:REQUEST',
+    'X-WR-TIMEZONE:Asia/Kolkata',
+    'BEGIN:VTIMEZONE',
+    'TZID:Asia/Kolkata',
+    'BEGIN:STANDARD',
+    'DTSTART:19700101T000000',
+    'TZOFFSETFROM:+0530',
+    'TZOFFSETTO:+0530',
+    'TZNAME:IST',
+    'END:STANDARD',
+    'END:VTIMEZONE',
     'BEGIN:VEVENT',
-    `DTSTART:${dtStart}`,
-    `DTEND:${dtEnd}`,
+    `DTSTART;TZID=Asia/Kolkata:${dtStart}`,
+    `DTEND;TZID=Asia/Kolkata:${dtEnd}`,
     `DTSTAMP:${now}`,
     `UID:${uid}`,
     `ORGANIZER;CN=${organizerName || organizerEmail}:mailto:${organizerEmail}`,
@@ -299,7 +309,7 @@ async function sendMeetingInvite(meeting, organizerEmail, organizerName) {
     </html>
   `;
 
-  // Send to all recipients with ICS attachment
+  // Send to all recipients with ICS as both alternative and attachment
   for (const recipient of allRecipients) {
     try {
       await t.sendMail({
@@ -307,10 +317,19 @@ async function sendMeetingInvite(meeting, organizerEmail, organizerName) {
         to: recipient,
         subject: `📅 Meeting: ${meeting.title || 'Meeting'} — ${meetDate}`,
         html,
-        icalEvent: {
-          method: 'REQUEST',
-          content: icsContent,
-        },
+        alternatives: [
+          {
+            contentType: 'text/calendar; charset="UTF-8"; method=REQUEST',
+            content: icsContent,
+          }
+        ],
+        attachments: [
+          {
+            filename: 'invite.ics',
+            content: icsContent,
+            contentType: 'application/ics',
+          }
+        ],
       });
       console.log(`📅 Calendar invite sent to ${recipient} for "${meeting.title}"`);
     } catch (err) {
