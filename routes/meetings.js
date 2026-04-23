@@ -1,6 +1,7 @@
 const express = require('express');
 const { queries } = require('../database/db');
 const { authMiddleware } = require('../middleware/auth');
+const { sendMeetingInvite } = require('../services/emailService');
 
 const router = express.Router();
 
@@ -31,6 +32,18 @@ router.post('/', authMiddleware, async (req, res) => {
     );
 
     const meeting = await queries.getMeetingById(result.lastInsertRowid);
+
+    // Send ICS calendar invites to all attendees + organizer
+    try {
+      const organizer = await queries.findUserById(req.user.id);
+      if (organizer && process.env.EMAIL_USER) {
+        await sendMeetingInvite(meeting, organizer.email, organizer.name);
+        console.log(`📅 Calendar invites sent for meeting: ${title}`);
+      }
+    } catch (emailErr) {
+      console.error('Calendar invite email error (non-blocking):', emailErr.message);
+    }
+
     res.status(201).json(meeting);
   } catch (err) {
     console.error('Create meeting error:', err);

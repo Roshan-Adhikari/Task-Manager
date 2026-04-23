@@ -198,5 +198,125 @@ async function sendAssignmentEmail(email, userName, task) {
 
   console.log(`📧 Assignment notification sent to ${email} for task: ${task.title}`);
 }
+// ── SEND MEETING CALENDAR INVITE (ICS) ────────────────────────────
+async function sendMeetingInvite(meeting, organizerEmail, organizerName) {
+  const t = getTransporter();
 
-module.exports = { sendReminderEmail, sendInviteEmail, sendNotificationEmail, sendAssignmentEmail };
+  // Parse attendee emails
+  const attendeeEmails = meeting.attendees
+    ? meeting.attendees.split(',').map(e => e.trim()).filter(Boolean)
+    : [];
+
+  // All recipients = attendees + organizer
+  const allRecipients = [...new Set([...attendeeEmails, organizerEmail])];
+  if (!allRecipients.length) return;
+
+  // Build ICS date strings (YYYYMMDDTHHMMSS)
+  const dateStr = (meeting.meeting_date || '').replace(/-/g, '');
+  const startTime = (meeting.start_time || '10:00').replace(/:/g, '') + '00';
+  const endTime = (meeting.end_time || '11:00').replace(/:/g, '') + '00';
+  const dtStart = `${dateStr}T${startTime}`;
+  const dtEnd = `${dateStr}T${endTime}`;
+  const uid = `taskflow-meeting-${meeting.id || Date.now()}@taskflow.app`;
+  const now = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+
+  // Build ATTENDEE lines
+  const attendeeLines = allRecipients.map(email =>
+    `ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=${email}:mailto:${email}`
+  ).join('\r\n');
+
+  // ICS content — METHOD:REQUEST makes it a proper calendar invite
+  const icsContent = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//TaskFlow//Meeting//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:REQUEST',
+    'BEGIN:VEVENT',
+    `DTSTART:${dtStart}`,
+    `DTEND:${dtEnd}`,
+    `DTSTAMP:${now}`,
+    `UID:${uid}`,
+    `ORGANIZER;CN=${organizerName || organizerEmail}:mailto:${organizerEmail}`,
+    attendeeLines,
+    `SUMMARY:${(meeting.title || 'Meeting').replace(/[,;\\]/g, ' ')}`,
+    `DESCRIPTION:${(meeting.description || '').replace(/\n/g, '\\n').replace(/[,;\\]/g, ' ')}${meeting.meet_link ? '\\n\\nJoin Google Meet: ' + meeting.meet_link : ''}`,
+    meeting.meet_link ? `LOCATION:${meeting.meet_link}` : 'LOCATION:Online',
+    `STATUS:CONFIRMED`,
+    `SEQUENCE:0`,
+    'BEGIN:VALARM',
+    'TRIGGER:-PT15M',
+    'ACTION:DISPLAY',
+    'DESCRIPTION:Meeting in 15 minutes',
+    'END:VALARM',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\r\n');
+
+  // Beautiful HTML email body
+  const meetDate = new Date(meeting.meeting_date + 'T00:00:00').toLocaleDateString('en', {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+  });
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="UTF-8"></head>
+    <body style="margin:0; padding:0; background:#0d0f12; font-family:'Segoe UI',Arial,sans-serif;">
+      <div style="max-width:600px; margin:0 auto; padding:32px 20px;">
+        <div style="background:linear-gradient(135deg, #1e2128 0%, #23272e 100%); border:1px solid rgba(255,255,255,0.07); border-radius:16px; padding:32px; text-align:center;">
+          <div style="width:48px; height:48px; background:rgba(62,207,142,0.12); border:1px solid rgba(62,207,142,0.35); border-radius:12px; display:inline-flex; align-items:center; justify-content:center; font-size:22px; margin-bottom:16px;">📅</div>
+          <h1 style="color:#e8eaed; font-size:20px; font-weight:600; margin:0 0 8px;">Meeting Invitation</h1>
+          <p style="color:#9aa0ab; font-size:14px; margin:0 0 24px;">${organizerName || 'A team member'} has invited you to a meeting</p>
+
+          <div style="background:#141619; border:1px solid rgba(255,255,255,0.07); border-radius:12px; padding:24px; text-align:left; margin-bottom:24px;">
+            <div style="color:#e8eaed; font-size:18px; font-weight:600; margin-bottom:12px;">${meeting.title || 'Meeting'}</div>
+            ${meeting.description ? `<div style="color:#9aa0ab; font-size:14px; margin-bottom:16px; line-height:1.5;">${meeting.description}</div>` : ''}
+            
+            <div style="display:flex; flex-wrap:wrap; gap:20px;">
+              <div>
+                <div style="color:#5c6370; font-size:11px; text-transform:uppercase; margin-bottom:4px;">Date</div>
+                <div style="color:#e8eaed; font-size:14px; font-weight:500;">📅 ${meetDate}</div>
+              </div>
+              <div>
+                <div style="color:#5c6370; font-size:11px; text-transform:uppercase; margin-bottom:4px;">Time</div>
+                <div style="color:#e8eaed; font-size:14px; font-weight:500;">🕐 ${meeting.start_time || '10:00'}${meeting.end_time ? ' – ' + meeting.end_time : ''}</div>
+              </div>
+              <div>
+                <div style="color:#5c6370; font-size:11px; text-transform:uppercase; margin-bottom:4px;">Attendees</div>
+                <div style="color:#e8eaed; font-size:14px;">👥 ${allRecipients.length} invited</div>
+              </div>
+            </div>
+          </div>
+
+          ${meeting.meet_link ? `<a href="${meeting.meet_link}" style="display:inline-block; background:#3ecf8e; color:#fff; padding:12px 32px; border-radius:8px; text-decoration:none; font-size:14px; font-weight:500; margin-bottom:12px;">🔗 Join Google Meet</a><br>` : ''}
+          <a href="https://task-manager-9mif.onrender.com" style="display:inline-block; background:#7c6af7; color:#fff; padding:10px 24px; border-radius:8px; text-decoration:none; font-size:13px; font-weight:500; margin-top:8px;">Open TaskFlow</a>
+          
+          <p style="color:#5c6370; font-size:12px; margin:20px 0 0;">This invite includes a calendar attachment. Open it to add the event to your calendar.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  // Send to all recipients with ICS attachment
+  for (const recipient of allRecipients) {
+    try {
+      await t.sendMail({
+        from: `"${process.env.EMAIL_SENDER_NAME || 'TaskFlow'}" <${process.env.EMAIL_USER}>`,
+        to: recipient,
+        subject: `📅 Meeting: ${meeting.title || 'Meeting'} — ${meetDate}`,
+        html,
+        icalEvent: {
+          method: 'REQUEST',
+          content: icsContent,
+        },
+      });
+      console.log(`📅 Calendar invite sent to ${recipient} for "${meeting.title}"`);
+    } catch (err) {
+      console.error(`❌ Failed to send invite to ${recipient}:`, err.message);
+    }
+  }
+}
+
+module.exports = { sendReminderEmail, sendInviteEmail, sendNotificationEmail, sendAssignmentEmail, sendMeetingInvite };
