@@ -21,6 +21,10 @@ let currentView = 'board';
 let selectedColor = '#7c6af7';
 let availableTags = [];
 let selectedTaskTags = []; // Temp storage for modal state
+let meetings = [];
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth();
+let draggedTaskId = null;
 
 const GROUP_COLORS = [
   '#7c6af7','#3ecf8e','#f59f00','#f03e3e',
@@ -197,17 +201,19 @@ function logout() {
 
 async function loadData() {
   try {
-    const [tasksData, teamsData, usersData, tagsData] = await Promise.all([
+    const [tasksData, teamsData, usersData, tagsData, meetingsData] = await Promise.all([
       api('/api/tasks'),
       api('/api/teams'),
       api('/api/users'),
       api('/api/tags'),
+      api('/api/meetings'),
     ]);
 
     tasks = tasksData;
     teams = teamsData;
     allUsers = usersData;
     availableTags = tagsData;
+    meetings = meetingsData || [];
 
     renderSidebar();
     renderTasks();
@@ -307,14 +313,14 @@ function setFilter(f, el) {
   document.querySelectorAll('.group-item').forEach(x => x.classList.remove('active'));
   el.classList.add('active');
 
-  const titles = { all:'All Tasks', mine:'My Tasks', today:'Due Today', overdue:'Overdue', activity:'Activity Log', users:'User Management', tags:'Tag Manager' };
+  const titles = { all:'All Tasks', mine:'My Tasks', today:'Due Today', overdue:'Overdue', activity:'Activity Log', users:'User Management', tags:'Tag Manager', calendar:'Calendar' };
   document.getElementById('page-title').textContent = titles[f] || f;
 
   // Toggle views — use querySelector for class-based elements
   const statsBar = document.querySelector('.stats-bar');
   const filtersBar = document.querySelector('.filters');
   const addTaskBtn = document.querySelector('.add-task-btn');
-  const views = ['board-view', 'list-view', 'activity-view', 'users-view', 'tags-view'];
+  const views = ['board-view', 'list-view', 'activity-view', 'users-view', 'tags-view', 'calendar-view'];
   views.forEach(v => document.getElementById(v).style.display = 'none');
   
   if (f === 'activity') {
@@ -335,6 +341,12 @@ function setFilter(f, el) {
     document.getElementById('tags-view').style.display = 'block';
     if (addTaskBtn) addTaskBtn.style.display = 'none';
     renderTags();
+  } else if (f === 'calendar') {
+    if (statsBar) statsBar.style.display = 'none';
+    if (filtersBar) filtersBar.style.display = 'none';
+    document.getElementById('calendar-view').style.display = 'block';
+    if (addTaskBtn) addTaskBtn.style.display = 'none';
+    renderCalendar();
   } else {
     if (statsBar) statsBar.style.display = 'grid';
     if (filtersBar) filtersBar.style.display = 'flex';
@@ -509,7 +521,7 @@ function taskCard(t) {
   const teamColor = t.team_color || '#7c6af7';
 
   return `
-    <div class="task-card" onclick="TF.openEditModal(${t.id})">
+    <div class="task-card" draggable="true" ondragstart="TF.dragStart(event,${t.id})" onclick="TF.openEditModal(${t.id})">
       <div class="task-card-top">
         <div class="task-check ${t.status === 'done' ? 'done' : ''}" onclick="event.stopPropagation();TF.toggleDone(${t.id})"></div>
         <div class="task-title-text ${t.status === 'done' ? 'done' : ''}">${escapeHtml(t.title)}</div>
@@ -673,7 +685,7 @@ async function openEditModal(id) {
     document.getElementById('f-desc').value = data.description || '';
     document.getElementById('f-status').value = data.status || 'todo';
     document.getElementById('f-priority').value = data.priority || 'medium';
-    document.getElementById('f-due').value = data.due_date || '';
+    document.getElementById('f-due').value = data.due_date ? data.due_date.split('T')[0].split(' ')[0] : '';
     
     // Set assignment state
     if (data.team_id && !data.assigned_to) {
@@ -1244,9 +1256,291 @@ window.TF = {
   closeTaskModal, saveTask, deleteTask, toggleDone,
   openGroupModal, closeGroupModal, selectColor, saveGroup, deleteTeam,
   addTeamMember, removeMember, renderTasks,
-  toggleAssignSection, addTagToTask, removeTagFromTask, saveTag, deleteTag, 
-  deleteUser, openUserModal, closeUserModal, saveUser
+  toggleAssignSection, addTagToTask, removeTagFromTask, saveTag, deleteTag,
+  deleteUser, openUserModal, closeUserModal, saveUser,
+  dragStart, dragOver, dragLeave, drop,
+  prevMonth, nextMonth, renderCalendar, openMeetingModal, closeMeetingModal,
+  saveMeeting, deleteMeeting, toggleMeetInvite, generateMeetLink
 };
+
+// ═══════════════════════════════════════════════════════════
+//  DRAG & DROP
+// ═══════════════════════════════════════════════════════════
+
+function dragStart(e, taskId) {
+  draggedTaskId = taskId;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', taskId);
+  setTimeout(() => e.target.classList.add('dragging'), 0);
+}
+
+function dragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('drag-over');
+}
+
+function dragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+
+async function drop(e, newStatus) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  document.querySelectorAll('.task-card.dragging').forEach(el => el.classList.remove('dragging'));
+
+  if (draggedTaskId === null) return;
+
+  const task = tasks.find(t => t.id == draggedTaskId);
+  if (!task || task.status === newStatus) { draggedTaskId = null; return; }
+
+  try {
+    await api(`/api/tasks/${draggedTaskId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: newStatus })
+    });
+    const label = newStatus === 'todo' ? 'To Do' : newStatus === 'inprogress' ? 'In Progress' : 'Done';
+    showToast(`Task moved to ${label} ✓`, 'success');
+    await loadData();
+  } catch (err) {
+    showToast('Failed to move task: ' + err.message, 'error');
+  }
+  draggedTaskId = null;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CALENDAR & MEETINGS
+// ═══════════════════════════════════════════════════════════
+
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function prevMonth() {
+  calMonth--;
+  if (calMonth < 0) { calMonth = 11; calYear--; }
+  renderCalendar();
+}
+
+function nextMonth() {
+  calMonth++;
+  if (calMonth > 11) { calMonth = 0; calYear++; }
+  renderCalendar();
+}
+
+function renderCalendar() {
+  document.getElementById('cal-month-title').textContent = `${MONTHS[calMonth]} ${calYear}`;
+
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+
+  let html = '';
+
+  // Empty cells before first day
+  for (let i = 0; i < firstDay; i++) {
+    html += '<div class="cal-cell empty"></div>';
+  }
+
+  // Day cells
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const isToday = dateStr === todayStr;
+
+    // Tasks due this day
+    const dayTasks = tasks.filter(t => {
+      if (!t.due_date) return false;
+      const td = t.due_date.split('T')[0].split(' ')[0];
+      return td === dateStr;
+    });
+
+    // Meetings this day
+    const dayMeetings = meetings.filter(m => {
+      const md = m.meeting_date ? m.meeting_date.split('T')[0].split(' ')[0] : '';
+      return md === dateStr;
+    });
+
+    const hasItems = dayTasks.length > 0 || dayMeetings.length > 0;
+
+    html += `<div class="cal-cell ${isToday ? 'today' : ''} ${hasItems ? 'has-items' : ''}" onclick="TF.openMeetingModal('${dateStr}')">`;
+    html += `<div class="cal-day-num">${d}</div>`;
+
+    // Show task badges
+    dayTasks.slice(0, 2).forEach(t => {
+      const pc = priorityColor(t.priority);
+      html += `<div class="cal-event task-event" style="background:${pc.bg};color:${pc.text}" title="${escapeHtml(t.title)}">${escapeHtml(t.title.substring(0, 12))}${t.title.length > 12 ? '…' : ''}</div>`;
+    });
+    if (dayTasks.length > 2) html += `<div class="cal-event-more">+${dayTasks.length - 2} more</div>`;
+
+    // Show meeting badges
+    dayMeetings.slice(0, 2).forEach(m => {
+      html += `<div class="cal-event meet-event" title="${escapeHtml(m.title)}">${m.start_time ? m.start_time.substring(0,5) : ''} ${escapeHtml(m.title.substring(0, 10))}${m.title.length > 10 ? '…' : ''}</div>`;
+    });
+    if (dayMeetings.length > 2) html += `<div class="cal-event-more">+${dayMeetings.length - 2} more</div>`;
+
+    html += '</div>';
+  }
+
+  document.getElementById('cal-grid').innerHTML = html;
+
+  // Render upcoming meetings list
+  renderMeetingsList();
+}
+
+function renderMeetingsList() {
+  const container = document.getElementById('meetings-list');
+  const upcoming = meetings.filter(m => m.meeting_date >= new Date().toISOString().split('T')[0]);
+
+  if (!upcoming.length) {
+    container.innerHTML = '<div style="color:var(--text3); font-size:13px; padding:16px;">No upcoming meetings scheduled</div>';
+    return;
+  }
+
+  container.innerHTML = upcoming.slice(0, 10).map(m => {
+    const dateDisplay = new Date(m.meeting_date + 'T00:00:00').toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' });
+    const teamBadge = m.team_name ? `<span class="task-badge" style="background:${m.team_color || 'var(--accent)'}22;color:${m.team_color || 'var(--accent)'}">${escapeHtml(m.team_name)}</span>` : '';
+    const gcalUrl = generateGCalUrl(m);
+
+    return `
+      <div class="meeting-card">
+        <div class="meeting-card-top">
+          <div class="meeting-icon">📹</div>
+          <div class="meeting-info">
+            <div class="meeting-title">${escapeHtml(m.title)}</div>
+            <div class="meeting-time">${dateDisplay} · ${m.start_time || ''}${m.end_time ? ' – ' + m.end_time : ''}</div>
+          </div>
+          <button class="task-action-btn" onclick="TF.deleteMeeting(${m.id})" title="Delete">🗑</button>
+        </div>
+        <div class="meeting-card-bottom">
+          ${teamBadge}
+          ${m.attendees ? `<span style="font-size:11px;color:var(--text3);">👥 ${m.attendees.split(',').length} attendee(s)</span>` : ''}
+          <div style="margin-left:auto; display:flex; gap:6px;">
+            ${m.meet_link ? `<a href="${escapeHtml(m.meet_link)}" target="_blank" class="meet-join-btn">🔗 Join Meet</a>` : ''}
+            <a href="${gcalUrl}" target="_blank" class="meet-gcal-btn">📅 Add to Calendar</a>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function generateGCalUrl(m) {
+  const dateStr = (m.meeting_date || '').replace(/-/g, '');
+  const start = dateStr + 'T' + (m.start_time || '10:00').replace(/:/g, '') + '00';
+  const end = dateStr + 'T' + (m.end_time || '11:00').replace(/:/g, '') + '00';
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: m.title || 'Meeting',
+    dates: `${start}/${end}`,
+    details: m.description || '',
+  });
+  if (m.attendees) params.set('add', m.attendees);
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function openMeetingModal(dateStr) {
+  document.getElementById('m-title').value = '';
+  document.getElementById('m-desc').value = '';
+  document.getElementById('m-date').value = dateStr || new Date().toISOString().split('T')[0];
+  document.getElementById('m-start').value = '10:00';
+  document.getElementById('m-end').value = '11:00';
+  document.getElementById('m-attendees').value = '';
+  document.getElementById('m-meet-link').value = '';
+  document.getElementById('m-invite-type').value = 'individual';
+  toggleMeetInvite();
+
+  // Populate team dropdown
+  const teamSel = document.getElementById('m-team');
+  teamSel.innerHTML = '<option value="">Choose Team...</option>' + teams.map(t =>
+    `<option value="${t.id}">${escapeHtml(t.name)}</option>`
+  ).join('');
+
+  document.getElementById('meeting-modal').classList.add('open');
+  setTimeout(() => document.getElementById('m-title').focus(), 100);
+}
+
+function closeMeetingModal() {
+  document.getElementById('meeting-modal').classList.remove('open');
+}
+
+function toggleMeetInvite() {
+  const type = document.getElementById('m-invite-type').value;
+  document.getElementById('m-individual-section').style.display = type === 'individual' ? 'block' : 'none';
+  document.getElementById('m-team-section').style.display = type === 'team' ? 'block' : 'none';
+}
+
+function generateMeetLink() {
+  // Open Google Meet's new meeting page
+  window.open('https://meet.google.com/new', '_blank');
+  showToast('Copy the Google Meet link and paste it below', 'info');
+}
+
+async function saveMeeting() {
+  const title = document.getElementById('m-title').value.trim();
+  const meetingDate = document.getElementById('m-date').value;
+  const startTime = document.getElementById('m-start').value;
+
+  if (!title) { showToast('Meeting title is required', 'error'); return; }
+  if (!meetingDate) { showToast('Date is required', 'error'); return; }
+  if (!startTime) { showToast('Start time is required', 'error'); return; }
+
+  const inviteType = document.getElementById('m-invite-type').value;
+  let attendees = '';
+  let teamId = null;
+
+  if (inviteType === 'team') {
+    teamId = document.getElementById('m-team').value || null;
+    // Get team member emails
+    if (teamId) {
+      try {
+        const members = await api(`/api/teams/${teamId}/members`);
+        attendees = members.map(m => m.email).join(',');
+      } catch (e) { /* ignore */ }
+    }
+  } else {
+    attendees = document.getElementById('m-attendees').value.trim();
+  }
+
+  const meetData = {
+    title,
+    description: document.getElementById('m-desc').value.trim(),
+    meeting_date: meetingDate,
+    start_time: startTime,
+    end_time: document.getElementById('m-end').value || '',
+    meet_link: document.getElementById('m-meet-link').value.trim(),
+    team_id: teamId,
+    attendees,
+  };
+
+  try {
+    await api('/api/meetings', {
+      method: 'POST',
+      body: JSON.stringify(meetData)
+    });
+    showToast('Meeting scheduled ✓', 'success');
+    closeMeetingModal();
+    meetings = await api('/api/meetings');
+    renderCalendar();
+  } catch (err) {
+    showToast('Failed to schedule: ' + err.message, 'error');
+  }
+}
+
+async function deleteMeeting(id) {
+  if (!confirm('Delete this meeting?')) return;
+  try {
+    await api(`/api/meetings/${id}`, { method: 'DELETE' });
+    showToast('Meeting deleted', 'info');
+    meetings = await api('/api/meetings');
+    renderCalendar();
+  } catch (err) {
+    showToast('Failed to delete: ' + err.message, 'error');
+  }
+}
+
+// Close meeting modal on overlay click
+document.getElementById('meeting-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('meeting-modal')) closeMeetingModal();
+});
 
 (async function init() {
   const loggedIn = await tryAutoLogin();

@@ -77,6 +77,9 @@
       <div class="nav-item" data-filter="activity" onclick="TF.setFilter('activity',this)">
         <span class="nav-icon">📊</span> Activity Log
       </div>
+      <div class="nav-item" data-filter="calendar" onclick="TF.setFilter('calendar',this)">
+        <span class="nav-icon">📆</span> Calendar
+      </div>
     </div>
 
     <div class="sidebar-footer">
@@ -158,7 +161,7 @@
             <div class="col-title">To Do</div>
             <div class="col-count" style="background:var(--blue-bg);color:var(--blue)" id="cnt-todo-col">0</div>
           </div>
-          <div class="board-col-body" id="col-todo"></div>
+          <div class="board-col-body" id="col-todo" ondragover="TF.dragOver(event)" ondragleave="TF.dragLeave(event)" ondrop="TF.drop(event,'todo')"></div>
         </div>
         <div class="board-col">
           <div class="board-col-header">
@@ -166,7 +169,7 @@
             <div class="col-title">In Progress</div>
             <div class="col-count" style="background:var(--amber-bg);color:var(--amber)" id="cnt-inp-col">0</div>
           </div>
-          <div class="board-col-body" id="col-inprogress"></div>
+          <div class="board-col-body" id="col-inprogress" ondragover="TF.dragOver(event)" ondragleave="TF.dragLeave(event)" ondrop="TF.drop(event,'inprogress')"></div>
         </div>
         <div class="board-col">
           <div class="board-col-header">
@@ -174,7 +177,7 @@
             <div class="col-title">Done</div>
             <div class="col-count" style="background:var(--green-bg);color:var(--green)" id="cnt-done-col">0</div>
           </div>
-          <div class="board-col-body" id="col-done"></div>
+          <div class="board-col-body" id="col-done" ondragover="TF.dragOver(event)" ondragleave="TF.dragLeave(event)" ondrop="TF.drop(event,'done')"></div>
         </div>
       </div>
 
@@ -204,6 +207,24 @@
           </div>
         </div>
         <div id="tags-list-container" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap:12px;"></div>
+      </div>
+
+      <!-- Calendar View -->
+      <div id="calendar-view" style="display:none;">
+        <div class="cal-header">
+          <button class="cal-nav-btn" onclick="TF.prevMonth()">◀</button>
+          <div class="cal-month-title" id="cal-month-title">April 2026</div>
+          <button class="cal-nav-btn" onclick="TF.nextMonth()">▶</button>
+          <button class="add-task-btn" onclick="TF.openMeetingModal()" style="margin-left:auto;">📅 Schedule Meeting</button>
+        </div>
+        <div class="cal-weekdays">
+          <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+        </div>
+        <div class="cal-grid" id="cal-grid"></div>
+        <div class="meetings-upcoming" id="meetings-section">
+          <h3 style="font-size:14px; font-weight:600; margin-bottom:14px;">📅 Upcoming Meetings</h3>
+          <div id="meetings-list"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -347,6 +368,68 @@
     <div class="modal-footer">
       <button class="btn-cancel" onclick="TF.closeUserModal()">Cancel</button>
       <button class="btn-save" onclick="TF.saveUser()">Create User</button>
+    </div>
+  </div>
+</div>
+
+<!-- MEETING MODAL -->
+<div class="modal-overlay" id="meeting-modal">
+  <div class="modal" style="width:480px">
+    <div class="modal-header">
+      <div class="modal-title">Schedule Meeting</div>
+      <button class="modal-close" onclick="TF.closeMeetingModal()">×</button>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Meeting Title *</label>
+      <input type="text" class="form-input" id="m-title" placeholder="e.g. Sprint Planning, 1:1 Check-in">
+    </div>
+    <div class="form-row">
+      <label class="form-label">Description</label>
+      <textarea class="form-input" id="m-desc" placeholder="Meeting agenda..."></textarea>
+    </div>
+    <div class="form-grid">
+      <div class="form-row">
+        <label class="form-label">Date *</label>
+        <input type="date" class="form-input" id="m-date">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Start Time *</label>
+        <input type="time" class="form-input" id="m-start" value="10:00">
+      </div>
+    </div>
+    <div class="form-grid">
+      <div class="form-row">
+        <label class="form-label">End Time</label>
+        <input type="time" class="form-input" id="m-end" value="11:00">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Invite</label>
+        <select id="m-invite-type" class="form-input" onchange="TF.toggleMeetInvite()">
+          <option value="individual">Individual</option>
+          <option value="team">Team</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row" id="m-individual-section">
+      <label class="form-label">Attendee Emails (comma separated)</label>
+      <input type="text" class="form-input" id="m-attendees" placeholder="email1@example.com, email2@example.com" list="assignee-list">
+    </div>
+    <div class="form-row" id="m-team-section" style="display:none;">
+      <label class="form-label">Select Team</label>
+      <select id="m-team" class="form-input">
+        <option value="">Choose Team...</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Google Meet Link</label>
+      <div style="display:flex; gap:8px;">
+        <input type="text" class="form-input" id="m-meet-link" placeholder="Paste or generate meet link" style="flex:1;">
+        <button class="add-task-btn" onclick="TF.generateMeetLink()" style="white-space:nowrap;">🔗 New Meet</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="TF.closeMeetingModal()">Cancel</button>
+      <button class="btn-save" onclick="TF.saveMeeting()">Schedule Meeting</button>
     </div>
   </div>
 </div>

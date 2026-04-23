@@ -111,6 +111,19 @@ async function createTables() {
       new_value TEXT,
       comment TEXT DEFAULT '',
       created_at ${mode === 'pg' ? 'TIMESTAMPTZ' : 'TEXT'} DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS meetings (
+      id ${mode === 'pg' ? 'SERIAL' : 'INTEGER'} PRIMARY KEY${mode === 'sqlite' ? ' AUTOINCREMENT' : ''},
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      meeting_date TEXT NOT NULL,
+      start_time TEXT NOT NULL,
+      end_time TEXT DEFAULT '',
+      meet_link TEXT DEFAULT '',
+      team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+      attendees TEXT DEFAULT '',
+      created_by INTEGER NOT NULL REFERENCES users(id),
+      created_at ${mode === 'pg' ? 'TIMESTAMPTZ' : 'TEXT'} DEFAULT CURRENT_TIMESTAMP
     )`
   ];
 
@@ -402,6 +415,39 @@ const queries = {
     }
   },
   deleteTag: async (id) => runQuery('DELETE FROM tags WHERE id = $1', [id]),
+
+  // Meetings
+  getAllMeetings: async () => queryAll(`
+    SELECT m.*, u.name as created_by_name, t.name as team_name, t.color as team_color
+    FROM meetings m
+    LEFT JOIN users u ON u.id = m.created_by
+    LEFT JOIN teams t ON t.id = m.team_id
+    ORDER BY m.meeting_date ASC, m.start_time ASC
+  `),
+  getMeetingById: async (id) => queryOne(`
+    SELECT m.*, u.name as created_by_name, t.name as team_name, t.color as team_color
+    FROM meetings m
+    LEFT JOIN users u ON u.id = m.created_by
+    LEFT JOIN teams t ON t.id = m.team_id
+    WHERE m.id = $1
+  `, [id]),
+  createMeeting: async (title, description, meetingDate, startTime, endTime, meetLink, teamId, attendees, createdBy) => {
+    if (mode === 'pg') {
+      const res = await db.query(
+        `INSERT INTO meetings (title, description, meeting_date, start_time, end_time, meet_link, team_id, attendees, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+        [title, description, meetingDate, startTime, endTime, meetLink, teamId, attendees, createdBy]
+      );
+      return { lastInsertRowid: res.rows[0].id };
+    } else {
+      const id = sqliteInsert(
+        'INSERT INTO meetings (title, description, meeting_date, start_time, end_time, meet_link, team_id, attendees, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [title, description, meetingDate, startTime, endTime, meetLink, teamId, attendees, createdBy]
+      );
+      return { lastInsertRowid: id };
+    }
+  },
+  deleteMeeting: async (id) => runQuery('DELETE FROM meetings WHERE id = $1', [id]),
 };
 
 module.exports = { initDB, queryAll, queryOne, runQuery, queries, getPool: () => db };
