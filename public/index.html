@@ -80,6 +80,9 @@
       <div class="nav-item" data-filter="calendar" onclick="TF.setFilter('calendar',this)">
         <span class="nav-icon">📆</span> Calendar
       </div>
+      <div class="nav-item" data-filter="slack" onclick="TF.setFilter('slack',this)">
+        <span class="nav-icon">💬</span> Slack
+      </div>
     </div>
 
     <div class="sidebar-footer">
@@ -224,6 +227,37 @@
         <div class="meetings-upcoming" id="meetings-section">
           <h3 style="font-size:14px; font-weight:600; margin-bottom:14px;">📅 Upcoming Meetings</h3>
           <div id="meetings-list"></div>
+        </div>
+      </div>
+
+      <!-- Slack View -->
+      <div id="slack-view" style="display:none;">
+        <div style="display:flex; align-items:center; gap:14px; margin-bottom:24px;">
+          <div style="font-size:18px; font-weight:600;">Slack Integration</div>
+          <button class="add-task-btn" onclick="TF.openSlackModal()" style="margin-left:auto;">💬 Send Message</button>
+          <button class="add-task-btn" onclick="TF.openSlackModal('channel')" style="background:var(--green);">📢 Message Channel</button>
+        </div>
+        <div style="margin-bottom:20px;">
+          <div style="font-size:13px; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:12px;">👥 Team Members</div>
+          <div id="slack-users-list"></div>
+        </div>
+        <div style="margin-top:20px; padding-top:20px; border-top:1px solid var(--border);">
+          <div style="font-size:13px; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:12px;">Add New Member</div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr 1fr auto; gap:10px; align-items:end;">
+            <div class="form-row" style="margin:0;">
+              <label class="form-label">Name</label>
+              <input type="text" class="form-input" id="slack-new-name" placeholder="Full Name">
+            </div>
+            <div class="form-row" style="margin:0;">
+              <label class="form-label">Email</label>
+              <input type="text" class="form-input" id="slack-new-email" placeholder="email@example.com">
+            </div>
+            <div class="form-row" style="margin:0;">
+              <label class="form-label">Slack User ID</label>
+              <input type="text" class="form-input" id="slack-new-id" placeholder="U0XXXXXXXX">
+            </div>
+            <button class="add-task-btn" onclick="TF.addSlackUser()" style="height:40px;">➕ Add</button>
+          </div>
         </div>
       </div>
     </div>
@@ -430,6 +464,38 @@
     <div class="modal-footer">
       <button class="btn-cancel" onclick="TF.closeMeetingModal()">Cancel</button>
       <button class="btn-save" onclick="TF.saveMeeting()">Schedule Meeting</button>
+    </div>
+  </div>
+</div>
+<!-- SLACK MESSAGE MODAL -->
+<div class="modal-overlay" id="slack-modal">
+  <div class="modal" style="width:520px">
+    <div class="modal-header">
+      <div class="modal-title" id="slack-modal-title">Send Slack Message</div>
+      <button class="modal-close" onclick="TF.closeSlackModal()">&times;</button>
+    </div>
+    <div class="form-row" id="slack-recipients-section">
+      <label class="form-label">Send To</label>
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+        <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; color:var(--accent2);">
+          <input type="checkbox" id="slack-select-all" onchange="TF.toggleSlackSelectAll()"> Select All
+        </label>
+      </div>
+      <div id="slack-recipient-list" style="display:flex; flex-direction:column; gap:6px; max-height:200px; overflow-y:auto;"></div>
+    </div>
+    <div class="form-row" id="slack-channel-info" style="display:none;">
+      <label class="form-label">Channel</label>
+      <div style="padding:10px 14px; background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); color:var(--text2); font-size:14px;">
+        📢 Team Channel (C0AJ41DFP38)
+      </div>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Message *</label>
+      <textarea class="form-input" id="slack-message" rows="5" placeholder="Type your message here... (supports Slack markdown)&#10;&#10;*bold* _italic_ ~strikethrough~ `code`"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="TF.closeSlackModal()">Cancel</button>
+      <button class="btn-save" onclick="TF.sendSlackMessage()" style="background:var(--green);">🚀 Send Message</button>
     </div>
   </div>
 </div>

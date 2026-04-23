@@ -25,6 +25,7 @@ let meetings = [];
 let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth();
 let draggedTaskId = null;
+let slackUsers = [];
 
 const GROUP_COLORS = [
   '#7c6af7','#3ecf8e','#f59f00','#f03e3e',
@@ -313,14 +314,14 @@ function setFilter(f, el) {
   document.querySelectorAll('.group-item').forEach(x => x.classList.remove('active'));
   el.classList.add('active');
 
-  const titles = { all:'All Tasks', mine:'My Tasks', today:'Due Today', overdue:'Overdue', activity:'Activity Log', users:'User Management', tags:'Tag Manager', calendar:'Calendar' };
+  const titles = { all:'All Tasks', mine:'My Tasks', today:'Due Today', overdue:'Overdue', activity:'Activity Log', users:'User Management', tags:'Tag Manager', calendar:'Calendar', slack:'Slack' };
   document.getElementById('page-title').textContent = titles[f] || f;
 
   // Toggle views — use querySelector for class-based elements
   const statsBar = document.querySelector('.stats-bar');
   const filtersBar = document.querySelector('.filters');
   const addTaskBtn = document.querySelector('.add-task-btn');
-  const views = ['board-view', 'list-view', 'activity-view', 'users-view', 'tags-view', 'calendar-view'];
+  const views = ['board-view', 'list-view', 'activity-view', 'users-view', 'tags-view', 'calendar-view', 'slack-view'];
   views.forEach(v => document.getElementById(v).style.display = 'none');
   
   if (f === 'activity') {
@@ -347,6 +348,12 @@ function setFilter(f, el) {
     document.getElementById('calendar-view').style.display = 'block';
     if (addTaskBtn) addTaskBtn.style.display = 'none';
     renderCalendar();
+  } else if (f === 'slack') {
+    if (statsBar) statsBar.style.display = 'none';
+    if (filtersBar) filtersBar.style.display = 'none';
+    document.getElementById('slack-view').style.display = 'block';
+    if (addTaskBtn) addTaskBtn.style.display = 'none';
+    loadSlackUsers();
   } else {
     if (statsBar) statsBar.style.display = 'grid';
     if (filtersBar) filtersBar.style.display = 'flex';
@@ -1260,7 +1267,9 @@ window.TF = {
   deleteUser, openUserModal, closeUserModal, saveUser,
   dragStart, dragOver, dragLeave, drop,
   prevMonth, nextMonth, renderCalendar, openMeetingModal, closeMeetingModal,
-  saveMeeting, deleteMeeting, toggleMeetInvite, generateMeetLink
+  saveMeeting, deleteMeeting, toggleMeetInvite, generateMeetLink,
+  openSlackModal, closeSlackModal, sendSlackMessage, loadSlackUsers,
+  addSlackUser, removeSlackUser, toggleSlackSelectAll
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -1540,6 +1549,163 @@ async function deleteMeeting(id) {
 // Close meeting modal on overlay click
 document.getElementById('meeting-modal').addEventListener('click', e => {
   if (e.target === document.getElementById('meeting-modal')) closeMeetingModal();
+});
+
+// ═══════════════════════════════════════════════════════════
+//  SLACK INTEGRATION
+// ═══════════════════════════════════════════════════════════
+
+async function loadSlackUsers() {
+  try {
+    slackUsers = await api('/api/slack/users');
+    renderSlackUsers();
+  } catch (err) {
+    console.error('Failed to load Slack users:', err);
+  }
+}
+
+function renderSlackUsers() {
+  const container = document.getElementById('slack-users-list');
+  if (!slackUsers.length) {
+    container.innerHTML = '<div style="color:var(--text3); font-size:13px; padding:16px;">No Slack users added yet</div>';
+    return;
+  }
+
+  container.innerHTML = slackUsers.map(u => `
+    <div class="member-item">
+      <div class="member-avatar" style="background:rgba(62,207,142,0.12); border-color:rgba(62,207,142,0.2); color:var(--green);">
+        ${getInitials(u.name)}
+      </div>
+      <div class="member-info">
+        <div class="member-name">${escapeHtml(u.name)}</div>
+        <div class="member-email">${escapeHtml(u.email)}</div>
+      </div>
+      <span class="task-badge" style="background:var(--accent-bg); color:var(--accent2); font-family:var(--mono);">${escapeHtml(u.slack_user_id)}</span>
+      <button class="task-action-btn" onclick="TF.removeSlackUser(${u.id})" title="Remove" style="opacity:1;">🗑</button>
+    </div>
+  `).join('');
+}
+
+async function addSlackUser() {
+  const name = document.getElementById('slack-new-name').value.trim();
+  const email = document.getElementById('slack-new-email').value.trim();
+  const slackId = document.getElementById('slack-new-id').value.trim();
+
+  if (!name || !email || !slackId) {
+    showToast('All fields are required', 'error');
+    return;
+  }
+
+  try {
+    slackUsers = await api('/api/slack/users', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, slack_user_id: slackId })
+    });
+    renderSlackUsers();
+    document.getElementById('slack-new-name').value = '';
+    document.getElementById('slack-new-email').value = '';
+    document.getElementById('slack-new-id').value = '';
+    showToast('Slack user added ✓', 'success');
+  } catch (err) {
+    showToast('Failed to add: ' + err.message, 'error');
+  }
+}
+
+async function removeSlackUser(id) {
+  if (!confirm('Remove this Slack user?')) return;
+  try {
+    await api(`/api/slack/users/${id}`, { method: 'DELETE' });
+    slackUsers = slackUsers.filter(u => u.id !== id);
+    renderSlackUsers();
+    showToast('User removed', 'info');
+  } catch (err) {
+    showToast('Failed to remove: ' + err.message, 'error');
+  }
+}
+
+let slackModalMode = 'individual'; // 'individual' or 'channel'
+
+function openSlackModal(mode) {
+  slackModalMode = mode || 'individual';
+  document.getElementById('slack-message').value = '';
+  document.getElementById('slack-select-all').checked = false;
+
+  if (slackModalMode === 'channel') {
+    document.getElementById('slack-modal-title').textContent = '📢 Message Channel';
+    document.getElementById('slack-recipients-section').style.display = 'none';
+    document.getElementById('slack-channel-info').style.display = 'block';
+  } else {
+    document.getElementById('slack-modal-title').textContent = '💬 Send Slack Message';
+    document.getElementById('slack-recipients-section').style.display = 'block';
+    document.getElementById('slack-channel-info').style.display = 'none';
+
+    // Populate recipient checkboxes
+    const list = document.getElementById('slack-recipient-list');
+    list.innerHTML = slackUsers.map(u => `
+      <label class="slack-recipient-item">
+        <input type="checkbox" name="slack-recipient" value="${u.slack_user_id}" data-name="${escapeHtml(u.name)}">
+        <div class="member-avatar" style="width:28px;height:28px;font-size:10px;background:rgba(62,207,142,0.12);border-color:rgba(62,207,142,0.2);color:var(--green);">
+          ${getInitials(u.name)}
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:13px;font-weight:500;">${escapeHtml(u.name)}</div>
+          <div style="font-size:11px;color:var(--text3);">${escapeHtml(u.email)}</div>
+        </div>
+      </label>
+    `).join('');
+  }
+
+  document.getElementById('slack-modal').classList.add('open');
+  setTimeout(() => document.getElementById('slack-message').focus(), 100);
+}
+
+function closeSlackModal() {
+  document.getElementById('slack-modal').classList.remove('open');
+}
+
+function toggleSlackSelectAll() {
+  const checked = document.getElementById('slack-select-all').checked;
+  document.querySelectorAll('input[name="slack-recipient"]').forEach(cb => cb.checked = checked);
+}
+
+async function sendSlackMessage() {
+  const message = document.getElementById('slack-message').value.trim();
+  if (!message) { showToast('Message cannot be empty', 'error'); return; }
+
+  try {
+    if (slackModalMode === 'channel') {
+      const result = await api('/api/slack/send-channel', {
+        method: 'POST',
+        body: JSON.stringify({ message })
+      });
+      showToast(result.message || 'Sent to channel ✓', 'success');
+    } else {
+      const selected = Array.from(document.querySelectorAll('input[name="slack-recipient"]:checked'));
+      if (!selected.length) { showToast('Select at least one recipient', 'error'); return; }
+
+      const userIds = selected.map(cb => cb.value);
+      const names = selected.map(cb => cb.dataset.name).join(', ');
+
+      const result = await api('/api/slack/send', {
+        method: 'POST',
+        body: JSON.stringify({ user_ids: userIds, message })
+      });
+
+      if (result.failed && result.failed.length > 0) {
+        showToast(`Sent to ${result.succeeded}, ${result.failed.length} failed`, 'error');
+      } else {
+        showToast(`Message sent to ${names} ✓`, 'success');
+      }
+    }
+    closeSlackModal();
+  } catch (err) {
+    showToast('Failed to send: ' + err.message, 'error');
+  }
+}
+
+// Close slack modal on overlay click
+document.getElementById('slack-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('slack-modal')) closeSlackModal();
 });
 
 (async function init() {

@@ -1059,3 +1059,25 @@ select.form-input { cursor: pointer; }
   .cal-cell { min-height: 60px; padding: 4px; }
   .cal-event { font-size: 8px; }
 }
+
+/* ══════════════════════════════════════════════════════════ */
+/* ── SLACK                                               ── */
+/* ══════════════════════════════════════════════════════════ */
+.slack-recipient-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background var(--transition);
+  border: 1px solid var(--border);
+  background: var(--bg3);
+}
+.slack-recipient-item:hover { background: var(--bg4); border-color: var(--border2); }
+.slack-recipient-item input[type="checkbox"] {
+  width: 16px; height: 16px;
+  accent-color: var(--green);
+  cursor: pointer;
+  flex-shrink: 0;
+}

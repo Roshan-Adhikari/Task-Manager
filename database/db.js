@@ -124,6 +124,13 @@ async function createTables() {
       attendees TEXT DEFAULT '',
       created_by INTEGER NOT NULL REFERENCES users(id),
       created_at ${mode === 'pg' ? 'TIMESTAMPTZ' : 'TEXT'} DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS slack_users (
+      id ${mode === 'pg' ? 'SERIAL' : 'INTEGER'} PRIMARY KEY${mode === 'sqlite' ? ' AUTOINCREMENT' : ''},
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      slack_user_id TEXT NOT NULL,
+      created_at ${mode === 'pg' ? 'TIMESTAMPTZ' : 'TEXT'} DEFAULT CURRENT_TIMESTAMP
     )`
   ];
 
@@ -144,6 +151,31 @@ async function createTables() {
   for (const idx of indexes) {
     try { await runRaw(idx); } catch (e) { /* ignore */ }
   }
+
+  // Seed Slack users if table is empty
+  try {
+    const slackCount = mode === 'pg'
+      ? (await db.query('SELECT COUNT(*) as count FROM slack_users')).rows[0].count
+      : (() => { const r = db.exec('SELECT COUNT(*) as count FROM slack_users'); return r.length > 0 ? r[0].values[0][0] : 0; })();
+
+    if (parseInt(slackCount) === 0) {
+      const slackSeeds = [
+        ['Akshita Kaushik', 'akshita.kaushik@masaischool.com', 'U0A12SG6VPB'],
+        ['Himansu B', 'himansu.b@masaischool.com', 'U0AHU8M1JSZ'],
+        ['Kshitiz G', 'kshitiz.g@masaischool.com', 'U0AFD8WEE7L'],
+        ['Siri N', 'siri.n@masaischool.com', 'U08KAS3EMED'],
+        ['Vartika Singh', 'vartika.singh@masaischool.com', 'U08KAS49JDP'],
+      ];
+      for (const [name, email, slackId] of slackSeeds) {
+        if (mode === 'pg') {
+          await db.query('INSERT INTO slack_users (name, email, slack_user_id) VALUES ($1, $2, $3)', [name, email, slackId]);
+        } else {
+          sqliteInsert('INSERT INTO slack_users (name, email, slack_user_id) VALUES (?, ?, ?)', [name, email, slackId]);
+        }
+      }
+      console.log('  ✅ Slack team members seeded');
+    }
+  } catch (e) { /* table might not exist yet */ }
 }
 
 // ── LOW-LEVEL DB HELPERS ──────────────────────────────────────────
@@ -448,6 +480,17 @@ const queries = {
     }
   },
   deleteMeeting: async (id) => runQuery('DELETE FROM meetings WHERE id = $1', [id]),
+
+  // Slack Users
+  getAllSlackUsers: async () => queryAll('SELECT * FROM slack_users ORDER BY name ASC'),
+  addSlackUser: async (name, email, slackUserId) => {
+    if (mode === 'pg') {
+      await db.query('INSERT INTO slack_users (name, email, slack_user_id) VALUES ($1, $2, $3)', [name, email, slackUserId]);
+    } else {
+      sqliteInsert('INSERT INTO slack_users (name, email, slack_user_id) VALUES (?, ?, ?)', [name, email, slackUserId]);
+    }
+  },
+  deleteSlackUser: async (id) => runQuery('DELETE FROM slack_users WHERE id = $1', [id]),
 };
 
 module.exports = { initDB, queryAll, queryOne, runQuery, queries, getPool: () => db };
