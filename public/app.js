@@ -475,7 +475,7 @@ function renderSidebar() {
 
 function renderTasks() {
   const filtered = getFilteredTasks();
-  updateStats();
+  updateStats(filtered);
 
   if (currentView === 'board') renderBoard(filtered);
   else renderList(filtered);
@@ -573,12 +573,15 @@ function renderList(filtered) {
   }).join('');
 }
 
-function updateStats() {
-  document.getElementById('s-total').textContent = tasks.length;
-  document.getElementById('s-progress').textContent = tasks.filter(t => t.status === 'inprogress').length;
-  document.getElementById('s-done').textContent = tasks.filter(t => t.status === 'done').length;
-  document.getElementById('s-overdue').textContent = tasks.filter(t => isOverdue(t.due_date) && t.status !== 'done').length;
+function updateStats(filtered) {
+  // Stats bar shows filtered counts (matching what's visible on the board)
+  const display = filtered || tasks;
+  document.getElementById('s-total').textContent = display.length;
+  document.getElementById('s-progress').textContent = display.filter(t => t.status === 'inprogress').length;
+  document.getElementById('s-done').textContent = display.filter(t => t.status === 'done').length;
+  document.getElementById('s-overdue').textContent = display.filter(t => isOverdue(t.due_date) && t.status !== 'done').length;
 
+  // Sidebar counts remain global
   document.getElementById('cnt-all').textContent = tasks.length;
   document.getElementById('cnt-mine').textContent = tasks.filter(t => t.assigned_to == currentUser?.id || t.created_by == currentUser?.id).length;
   document.getElementById('cnt-today').textContent = tasks.filter(t => isToday(t.due_date)).length;
@@ -778,6 +781,12 @@ async function saveTask() {
 
     closeTaskModal();
     await loadData();
+
+    // Switch to "All Tasks" view so the user sees the task immediately
+    if (!editingTaskId) {
+      const allNav = document.querySelector('.nav-item[data-filter="all"]');
+      if (allNav) setFilter('all', allNav);
+    }
   } catch (err) {
     showToast('Failed to save: ' + err.message, 'error');
   }
